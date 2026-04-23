@@ -9,23 +9,32 @@ from .logger import get_logger
 logger = get_logger("transcriber")
 
 class Transcriber:
-    def __init__(self, model_size="small", device="cpu"):
+    def __init__(self, model_size=None, device=None):
+        import torch
+        # Auto-detect CUDA
+        cuda_available = torch.cuda.is_available()
+        self.device = device or ("cuda" if cuda_available else "cpu")
+        
+        # If user didn't specify model, auto-select based on hardware
+        if model_size is None:
+            self.model_size = "medium" if cuda_available else "small"
+        else:
+            self.model_size = model_size
+
         # Check for local ffmpeg relative to this file
         self.bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin"))
         if os.path.exists(os.path.join(self.bin_path, "ffmpeg.exe")):
-            os.environ["PATH"] += os.pathsep + self.bin_path
-            logger.info(f"Added {self.bin_path} to PATH for local ffmpeg usage.")
-        else:
-            logger.warning("Local bin/ffmpeg.exe not found. Ensure ffmpeg is in your system PATH.")
-
-        logger.info(f"Loading Whisper model '{model_size}' (offline)...")
-        self.model = whisper.load_model(model_size, device=device)
+            if self.bin_path not in os.environ["PATH"]:
+                os.environ["PATH"] += os.pathsep + self.bin_path
+                logger.info(f"Added {self.bin_path} to PATH for local ffmpeg usage.")
+        
+        logger.info(f"Loading Whisper model '{self.model_size}' on {self.device}...")
+        self.model = whisper.load_model(self.model_size, device=self.device)
         logger.info("Model loaded successfully.")
 
     def extract_audio(self, video_path, audio_output="temp_audio.mp3"):
         logger.info(f"Extracting audio from {video_path}...")
         try:
-            # Using ffmpeg directly to avoid moviepy overhead if possible
             command = [
                 "ffmpeg", "-i", video_path,
                 "-ab", "160k", "-ac", "2", "-ar", "44100", "-vn",

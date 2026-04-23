@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+import time
 
 logger = logging.getLogger("analyzer.llm")
 
@@ -18,7 +19,7 @@ class LLMProcessor:
             logger.error(f"Failed to encode image {image_path}: {e}")
             return None
 
-    def analyze_moment(self, image_path, ocr_text, transcript_text):
+    def analyze_moment(self, image_path, ocr_text, transcript_text, retries=3):
         base64_image = self._encode_image(image_path)
         
         prompt = f"""
@@ -47,19 +48,25 @@ class LLMProcessor:
         if base64_image:
             payload["images"] = [base64_image]
         
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=60 # Increased timeout for vision processing
-            )
-            response.raise_for_status()
-            result = response.json()
-            return json.loads(result.get("response", "{}"))
-        except Exception as e:
-            logger.error(f"LLM Analysis failed: {e}")
-            return {
-                "total_description": "Analysis unavailable.",
-                "key_takeaways": [],
-                "structured_data": ""
-            }
+        for attempt in range(retries):
+            try:
+                response = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=180 # Increased timeout for stable vision processing
+                )
+                response.raise_for_status()
+                result = response.json()
+                return json.loads(result.get("response", "{}"))
+            except Exception as e:
+                logger.warning(f"LLM Attempt {attempt+1}/{retries} failed: {e}")
+                if attempt < retries - 1:
+                    time.sleep(5) # Wait before retry
+                else:
+                    logger.error(f"LLM Analysis failed after {retries} attempts.")
+        
+        return {
+            "total_description": "Analysis unavailable.",
+            "key_takeaways": [],
+            "structured_data": ""
+        }
