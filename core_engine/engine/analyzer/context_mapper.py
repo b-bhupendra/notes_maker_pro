@@ -58,7 +58,8 @@ class ContextMapper:
         5. Return ONLY the JSON object.
         """)
         
-        prompt = prompt_tpl.substitute(
+        # Fix 1: safe_substitute prevents crash if transcript/OCR contains '$' signs (e.g. prices)
+        prompt = prompt_tpl.safe_substitute(
             transcript=full_transcript[:15000],
             ocr=combined_ocr[:5000]
         )

@@ -35,8 +35,10 @@ class KBConverter:
         absolute_visual_elements = [{"asset_path": frame_path}] 
         
         # 3. LLM Analysis (Multimodal with Global Context)
+        # Fix 3: Use .get() to avoid KeyError if transcriber returned empty segments
+        text_content = moment.get('text', '')
         try:
-            analysis = self.llm.analyze_scene(absolute_visual_elements, ocr_text, moment['text'], global_context=moment.get('global_context'))
+            analysis = self.llm.analyze_scene(absolute_visual_elements, ocr_text, text_content, global_context=moment.get('global_context'))
         except Exception as e:
             logger.error(f"LLM analysis failed for scene {i+1}: {e}")
             analysis = {}
@@ -49,7 +51,7 @@ class KBConverter:
                     code = vis.get("mermaid_code", "")
                     if code and not self.visual_engine._validate_mermaid(code):
                         logger.info("Fixing Mermaid syntax via VisualEngine...")
-                        code = self.visual_engine.generate_mermaid_flowchart(moment['text'])
+                        code = self.visual_engine.generate_mermaid_flowchart(text_content)
                     if code:
                         visual_elements_out.append({
                             "type": "diagram",
@@ -58,7 +60,7 @@ class KBConverter:
                         })
                 elif vis.get("type") == "illustration":
                     logger.info("Generating SVG illustration metaphor...")
-                    svg = self.visual_engine.generate_svg_illustration(moment['text'])
+                    svg = self.visual_engine.generate_svg_illustration(text_content)
                     if svg:
                         visual_elements_out.append({
                             "type": "svg_illustration",
@@ -69,12 +71,14 @@ class KBConverter:
                 logger.error(f"Visual enhancement failed for scene {i+1}: {ev}")
 
         # 5. Animation Trigger Logic (Semantic Mechanism Check)
+        # Fix 3: Use pre-fetched text_content (safe .get()) for both trigger check and animation call
         trigger_keywords = ["mechanism", "process", "flow", "how it works", "entering", "exiting", "cycle", "algorithm", "path", "logic"]
-        should_animate = any(kw in (moment['text'] + analysis.get('detailed_explanations', '')).lower() for kw in trigger_keywords)
+        combined_text = (text_content + analysis.get('detailed_explanations', '')).lower()
+        should_animate = any(kw in combined_text for kw in trigger_keywords)
         
         if should_animate:
             logger.info(f"Semantic Trigger Detected for scene {i+1}: Generating explainer animation...")
-            animated_svg = self.animation_engine.generate_animation(moment['text'], moment.get('global_context'))
+            animated_svg = self.animation_engine.generate_animation(text_content, moment.get('global_context'))
             if animated_svg:
                 visual_elements_out.append({
                     "type": "animated_explainer",
@@ -83,9 +87,9 @@ class KBConverter:
         
         return {
             "time_range": moment.get('time_range', [moment.get('timestamp', 0), moment.get('timestamp', 0)]),
-            "frame_path": moment['frame_path'],
+            "frame_path": moment.get('frame_path', ''),
             "ocr_text": ocr_text,
-            "audio_text": moment['text'],
+            "audio_text": text_content,  # Fix 3: use the safe variable, not moment['text']
             "key_concepts": analysis.get("key_concepts", []),
             "detailed_explanations": analysis.get("detailed_explanations", ""),
             "definitions": analysis.get("definitions", []),

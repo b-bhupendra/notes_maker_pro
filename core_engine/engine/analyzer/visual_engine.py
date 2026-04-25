@@ -26,14 +26,17 @@ class VisualEngine:
         2. Use ONLY 'graph LR' or 'graph TD'.
         3. No HTML tags inside nodes.
         
-        STRICT RULES:
-        - Analyze the context and image details. YOU MUST map the EXACT entities mentioned.
+        STRICT RULES FOR BASIC MODELS:
+        - Use VERY SIMPLE shapes and labels only.
+        - Limit to MAX 3 nodes total. Do NOT add more.
+        - Analyze the context. YOU MUST map the EXACT entities mentioned.
         - DO NOT output generic placeholders like 'A[Start] --> B[Process]'.
         - If the context doesn't describe a clear process or structure, return an empty string.
         - If there is no flowchart logic in the input, return "".
         """)
         
-        prompt = prompt_tpl.substitute(context=context_summary)
+        # Fix 1: safe_substitute prevents crash if context contains '$' signs
+        prompt = prompt_tpl.safe_substitute(context=context_summary)
         
         for attempt in range(retries + 1):
             try:
@@ -43,8 +46,9 @@ class VisualEngine:
                 CONTEXT:
                 $context
                 
-                STRICT RULES:
-                - YOU MUST map EXACT entities. No 'A', 'B', 'Start', 'Process' unless they are explicitly in the text.
+                STRICT RULES FOR BASIC MODELS:
+                - Use VERY SIMPLE shapes. Limit to MAX 3 nodes. Do NOT add more nodes.
+                - YOU MUST map EXACT entities from the context. No 'A', 'B', 'Start', 'Process' unless they appear verbatim in the text.
                 - If no flowchart logic is found, return empty mermaid_code.
                 
                 REQUIRED OUTPUT FORMAT (JSON):
@@ -54,7 +58,8 @@ class VisualEngine:
                 }
                 """)
                 
-                res = self.llm.generate_text(json_prompt_tpl.substitute(context=context_summary))
+                # Fix 1: safe_substitute prevents crash if context contains '$' signs
+                res = self.llm.generate_text(json_prompt_tpl.safe_substitute(context=context_summary))
                 code = res.get("mermaid_code", "")
                 
                 if code and self._validate_mermaid(code):
@@ -76,7 +81,9 @@ class VisualEngine:
         CONCEPT:
         $context
         
-        STRICT RULES:
+        STRICT RULES FOR BASIC MODELS:
+        - Use VERY SIMPLE shapes ONLY: <rect>, <circle>, <line>, <text>.
+        - Do NOT use complex <path> data (e.g. 'd=' attributes with curves). Use rectangles and circles instead.
         - Generate a meaningful visual metaphor based ONLY on the concept.
         - No generic circles unless the concept is 'Circle' or 'Loop'.
         - If the concept is too abstract for a simple SVG, return an empty svg_code.
@@ -94,7 +101,8 @@ class VisualEngine:
         """)
         
         try:
-            res = self.llm.generate_text(prompt_tpl.substitute(context=context_summary))
+            # Fix 1: safe_substitute prevents crash if context contains '$' signs
+            res = self.llm.generate_text(prompt_tpl.safe_substitute(context=context_summary))
             return res.get("svg_code", "")
         except Exception as e:
             logger.error(f"SVG generation failed: {e}")

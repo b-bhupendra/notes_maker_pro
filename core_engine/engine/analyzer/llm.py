@@ -29,24 +29,44 @@ class LLMProcessor:
             return None
 
     def _clean_json(self, text):
+        """Hyper-aggressive JSON cleaner for small/basic LLM output."""
         if isinstance(text, dict): return text
         import re
         text = text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
+
+        # Step 1: Strip markdown code fences (handles ```json ... ``` and ``` ... ```)
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
         text = text.strip()
+
+        # Step 2: Try standard parse first (fast path)
         try:
             return json.loads(text)
-        except:
-            # Fallback for messy output
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            raise
+        except Exception:
+            pass
+
+        # Step 3: Greedy extraction — grab from first '{' to LAST '}'
+        # This strips any conversational prefix/suffix the model appended.
+        match = re.search(r'\{[\s\S]*\}', text)
+        if match:
+            candidate = match.group()
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+
+        # Step 4: Nuclear fallback — safe eval (no builtins) for Python-style dicts
+        try:
+            import ast
+            result = ast.literal_eval(text)
+            if isinstance(result, dict):
+                return result
+        except Exception:
+            pass
+
+        # Step 5: Return empty dict instead of crashing the thread
+        logger.warning("_clean_json: All parsing strategies failed. Returning empty dict.")
+        return {}
 
     def generate_text(self, prompt, retries=3):
         """Standard text generation without images."""
@@ -127,7 +147,8 @@ class LLMProcessor:
         Return ONLY the JSON object.
         """)
         
-        prompt = prompt_tpl.substitute(
+        # Fix 1: safe_substitute prevents crashes when transcript/OCR contains '$' signs
+        prompt = prompt_tpl.safe_substitute(
             global_context=global_context_str,
             ocr_text=str(ocr_text),
             transcript_text=str(transcript_text)

@@ -241,12 +241,22 @@ class HTMLGenerator:
         });
 
         function replayAnimation(btn) {
-            const container = btn.closest('.animated-explainer-box');
+            const container = btn.closest('.animated-explainer-box').querySelector('.animation-container');
+            if (!container) return;
             const svg = container.querySelector('svg');
-            if (svg) {
-                const newSvg = svg.cloneNode(true);
-                svg.parentNode.replaceChild(newSvg, svg);
-            }
+            if (!svg) return;
+
+            // Clone the SVG before removing the original
+            const clonedSvg = svg.cloneNode(true);
+
+            // Remove the live SVG from the DOM
+            container.removeChild(svg);
+
+            // Force a DOM reflow so the browser forgets the old animation state
+            void container.offsetWidth;
+
+            // Re-append the fresh clone — CSS @keyframes will restart from 0
+            container.appendChild(clonedSvg);
         }
         """
 
@@ -319,9 +329,9 @@ class HTMLGenerator:
                     if svg_code:
                         scenes_html += f'''
                         <div class="animated-explainer-box" style="background:#1e1e1e; padding:20px; border-radius:10px; margin:20px 0; position:relative;">
-                            <button onclick="this.nextElementSibling.innerHTML = this.nextElementSibling.innerHTML" 
-                                    style="position:absolute; top:10px; right:10px; cursor:pointer; background:var(--accent-color); color:white; border:none; padding:5px 10px; border-radius:5px;">
-                                🔄 Replay
+                            <button onclick="replayAnimation(this)"
+                                    class="replay-btn">
+                                &#x1F504; Replay
                             </button>
                             <div class="animation-container">{svg_code}</div>
                         </div>
