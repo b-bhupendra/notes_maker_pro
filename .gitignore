@@ -1,6 +1,5 @@
 .pytest_cache
 test_video_output
-test_video.mp4
 *.mp4
 .venv
 mocked_test_output
@@ -11,3 +10,4 @@ test_video_output
 core_engine/__pycache__
 core_engine/__pycache__
 core_engine/bin
+*.mp3
