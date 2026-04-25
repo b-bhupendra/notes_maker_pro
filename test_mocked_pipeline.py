@@ -81,6 +81,36 @@ def mock_generate(model, prompt, images=None, format=None, options=None, keep_al
     elif "Data Visualization Expert" in prompt:
         return { "response": json.dumps({ "code": "print('Dynamic E2B Diagram Script')" }) }
 
+    # 4b. Animation Engine
+    elif "expert SVG and CSS animator" in prompt:
+        return {
+            "response": json.dumps({
+                "svg_code": """
+                <svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+                    <style>
+                        .node { stroke: black; fill: none; stroke-width: 2; opacity: 0; animation: fadeIn 1s forwards; }
+                        .edge { stroke: black; stroke-width: 2; stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: draw 2s forwards; }
+                        .label { font-family: 'Caveat', cursive; font-size: 20px; opacity: 0; animation: fadeIn 1s forwards; }
+                        
+                        @keyframes fadeIn { to { opacity: 1; } }
+                        @keyframes draw { to { stroke-dashoffset: 0; } }
+                        
+                        #n1 { animation-delay: 0s; }
+                        #e1 { animation-delay: 1s; }
+                        #n2 { animation-delay: 3s; }
+                        #l1 { animation-delay: 4s; }
+                    </style>
+                    <circle id="n1" class="node" cx="100" cy="200" r="30" />
+                    <line id="e1" class="edge" x1="130" y1="200" x2="270" y2="200" />
+                    <circle id="n2" class="node" cx="300" cy="200" r="30" />
+                    <text id="l1" class="label" x="100" y="250">Start Node</text>
+                    <text id="l2" class="label" x="300" y="250" style="animation-delay: 5s;">Added to MST</text>
+                </svg>
+                """,
+                "explanation": "This animation shows the sequential addition of a neighbor node to the Minimum Spanning Tree using the cheapest edge."
+            })
+        }
+
     # 5. Phase 3: Scene Analysis
     else:
         # Extract snippet for dynamic summary
