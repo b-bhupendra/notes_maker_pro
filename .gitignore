@@ -16,8 +16,9 @@ test_video_output/
 scratch/
 .env
 
-# Engine Artifacts
-core_engine/bin/
+# Engine Binaries (auto-downloaded at runtime — never committed)
+core_engine/bin/*
+!core_engine/bin/.gitkeep
 knowledge_base.json
 
 # Media files

@@ -314,17 +314,18 @@ class HTMLGenerator:
                     svg_code = vis.get("svg_code", "")
                     if svg_code:
                         scenes_html += f'<div class="svg-illustration">{svg_code}</div>'
-                elif vis.get("type") == "animation":
+                elif vis.get("type") == "animated_explainer":
                     svg_code = vis.get("svg_code", "")
-                    explanation = vis.get("explanation", "")
                     if svg_code:
-                        scenes_html += f"""
-                        <div class="animated-explainer-box">
-                            <button class="replay-btn" onclick="replayAnimation(this)">↺ Replay</button>
-                            {svg_code}
-                            <div class="explainer-caption">{explanation}</div>
+                        scenes_html += f'''
+                        <div class="animated-explainer-box" style="background:#1e1e1e; padding:20px; border-radius:10px; margin:20px 0; position:relative;">
+                            <button onclick="this.nextElementSibling.innerHTML = this.nextElementSibling.innerHTML" 
+                                    style="position:absolute; top:10px; right:10px; cursor:pointer; background:var(--accent-color); color:white; border:none; padding:5px 10px; border-radius:5px;">
+                                🔄 Replay
+                            </button>
+                            <div class="animation-container">{svg_code}</div>
                         </div>
-                        """
+                        '''
                         
             # Research
             res_notes = scene.get("research_notes", "")
@@ -402,6 +403,14 @@ class HTMLGenerator:
                 <strong>Core Thesis:</strong> {ctx.get('core_thesis', 'Not defined')}
             </p>
         """
+
+        # FIX: Render Holistic Mindmap
+        holistic = ctx.get("holistic_diagram", {})
+        if isinstance(holistic, dict) and holistic.get("code"):
+            html += f"""
+            <h3 style='margin-top:30px;'>Total Knowledge Mindmap</h3>
+            <div class="mermaid">{holistic.get("code")}</div>
+            """
         
         glossary = ctx.get("glossary", [])
         if glossary:

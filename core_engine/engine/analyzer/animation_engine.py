@@ -1,66 +1,48 @@
 import logging
-import json
 from string import Template
 from .llm import LLMProcessor
 
-logger = logging.getLogger("analyzer.animation_engine")
+logger = logging.getLogger("analyzer.animator")
 
 class AnimationEngine:
-    def __init__(self, llm_processor: LLMProcessor):
+    def __init__(self, llm_processor):
         self.llm = llm_processor
 
-    def generate_animation(self, context_summary, transcript_chunk):
-        """Generates a sequential CSS/SVG animation based on a process description."""
-        
+    def generate_animation(self, transcript_chunk, global_context):
+        logger.info("Generating CSS-animated SVG Explainer...")
         prompt_tpl = Template("""
-        You are an expert SVG and CSS animator. Analyze the transcript chunk and explain the physical or logical process occurring.
+        You are an expert SVG and CSS animator. 
         
-        CONTEXT:
-        $context
+        CONTEXT: $context
+        TRANSCRIPT: $transcript
         
-        TRANSCRIPT:
-        $transcript
+        TASK:
+        Generate an animated 'How It Works' visual explainer.
         
         STRICT RULES:
-        1. Generate an inline <svg> with a viewBox="0 0 800 400".
-        2. Use our sketchy, hand-drawn aesthetic (black strokes, no fill for outlines, stroke-width="2").
-        3. Include a <style> block inside the SVG. Use CSS @keyframes to animate the elements.
-        4. Use sequential animation-delay properties so the steps happen one after another.
-        5. The total animation loop should last between 5 to 10 seconds.
-        6. Include <text> elements that act as labels, fading in when the relevant part of the animation occurs.
-        7. DO NOT use external libraries like GSAP or React.
-        8. The SVG must be self-contained.
+        1. Output an inline <svg> with viewBox="0 0 800 400".
+        2. Include a <style> block INSIDE the SVG using CSS @keyframes to animate the elements sequentially (using animation-delay).
+        3. Use basic shapes (<rect>, <circle>, <path>, <g>) and black strokes/no fill for a sketchy aesthetic.
+        4. Add <text> labels that fade in.
         
-        INSTRUCTIONS:
-        - Break down the process (e.g., 'data flowing through a pipe', 'molecule entering a cell') into 3-5 sequential steps.
-        - Elements should fade in (opacity), move (transform: translate), or change color to explain the mechanism.
-        
-        REQUIRED OUTPUT FORMAT (JSON):
+        REQUIRED FORMAT (JSON):
         {
-            "svg_code": "<svg ...><style>...</style>...</svg>",
-            "explanation": "Step-by-step breakdown of what the animation shows"
+            "animated_svg": "<svg>...</svg>",
+            "explanation": "Brief description of the animation steps."
         }
         """)
         
-        prompt = prompt_tpl.substitute(
-            context=context_summary,
-            transcript=transcript_chunk
-        )
-        
         try:
-            logger.info("Generating CSS/SVG animation...")
-            res = self.llm.generate_text(prompt)
-            svg_code = res.get("svg_code", "")
-            explanation = res.get("explanation", "")
-            
-            if "<svg" in svg_code and "<style" in svg_code:
-                return {
-                    "svg_code": svg_code,
-                    "explanation": explanation
-                }
-            else:
-                logger.warning("Generated animation was incomplete (missing SVG or Style tags).")
-                return None
+            res = self.llm.generate_text(prompt_tpl.substitute(
+                context=str(global_context.get("core_thesis") if global_context else ""), 
+                transcript=transcript_chunk
+            ))
+            # Handle potential dictionary response or stringified JSON
+            if isinstance(res, str):
+                import json
+                res = json.loads(res)
+                
+            return res.get("animated_svg", "")
         except Exception as e:
             logger.error(f"Animation generation failed: {e}")
-            return None
+            return ""

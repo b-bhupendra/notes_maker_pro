@@ -31,13 +31,8 @@ class KBConverter:
         base_name = os.path.splitext(os.path.basename(frame_path))[0]
         visual_elements = layout_analyzer.detect_and_crop(frame_path, base_name)
         
-        # We don't store asset_paths in the final KB anymore, 
-        # but we need absolute paths for the LLM to read the images.
-        absolute_visual_elements = []
-        for el in visual_elements:
-            abs_el = el.copy()
-            # el['asset_path'] is absolute coming from layout_analyzer
-            absolute_visual_elements.append(abs_el)
+        # FIX: Only pass the primary full frame to the LLM to save VRAM
+        absolute_visual_elements = [{"asset_path": frame_path}] 
         
         # 3. LLM Analysis (Multimodal with Global Context)
         try:
@@ -79,12 +74,11 @@ class KBConverter:
         
         if should_animate:
             logger.info(f"Semantic Trigger Detected for scene {i+1}: Generating explainer animation...")
-            anim = self.animation_engine.generate_animation(moment.get('global_context'), moment['text'])
-            if anim:
+            animated_svg = self.animation_engine.generate_animation(moment['text'], moment.get('global_context'))
+            if animated_svg:
                 visual_elements_out.append({
-                    "type": "animation",
-                    "svg_code": anim["svg_code"],
-                    "explanation": anim["explanation"]
+                    "type": "animated_explainer",
+                    "svg_code": animated_svg
                 })
         
         return {

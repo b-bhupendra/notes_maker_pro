@@ -6,6 +6,7 @@ import os
 import subprocess
 from .logger import get_logger
 from .utils import safe_is_cuda_available
+from .setup_bins import ensure_ffmpeg
 
 logger = get_logger("transcriber")
 
@@ -21,12 +22,14 @@ class Transcriber:
         else:
             self.model_size = model_size
 
-        # Check for local ffmpeg relative to this file
-        self.bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bin"))
-        if os.path.exists(os.path.join(self.bin_path, "ffmpeg.exe")):
-            if self.bin_path not in os.environ["PATH"]:
-                os.environ["PATH"] += os.pathsep + self.bin_path
-                logger.info(f"Added {self.bin_path} to PATH for local ffmpeg usage.")
+        # Ensure ffmpeg is available (auto-downloads if missing)
+        ffmpeg_ready = ensure_ffmpeg()
+        if not ffmpeg_ready:
+            logger.warning(
+                "ffmpeg could not be found or downloaded. "
+                "Audio transcription will be skipped."
+            )
+        self.ffmpeg_ready = ffmpeg_ready
         
         logger.info(f"Loading Faster-Whisper model '{self.model_size}' on {self.device}...")
         try:
@@ -39,6 +42,9 @@ class Transcriber:
             self.model = None
 
     def extract_audio(self, video_path, audio_output="temp_audio.mp3"):
+        if not getattr(self, "ffmpeg_ready", False):
+            logger.warning("Skipping audio extraction: ffmpeg is not available.")
+            return None
         logger.info(f"Extracting audio from {video_path}...")
         try:
             command = [

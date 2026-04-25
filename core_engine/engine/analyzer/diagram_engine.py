@@ -10,38 +10,40 @@ class DiagramEngine:
         self.llm = llm_processor or LLMProcessor()
 
     def generate_holistic_diagrams(self, global_context):
-        """
-        Uses the global context to generate complex Python scripts for E2B diagrams.
-        These diagrams represent the lifecycle of concepts across the entire video.
-        """
-        logger.info("Generating Holistic E2B Diagrams...")
+        logger.info("Generating Holistic Mermaid Mindmap...")
         
         knowledge_graph = global_context.get("knowledge_graph", [])
         core_thesis = global_context.get("core_thesis", "")
         
         prompt = f"""
-        You are a Data Visualization Expert. Based on the Global Context of this video, generate a Python script (compatible with E2B or standard Matplotlib/NetworkX) that visualizes the 'Entire Concept Lifecycle'.
+        You are a Data Visualization Expert. Based on the video's Global Context, generate a Mermaid.js Mindmap summarizing the entire lifecycle.
         
         CORE THESIS: {core_thesis}
         KNOWLEDGE GRAPH: {json.dumps(knowledge_graph)}
         
         TASK:
-        Write a Python script that:
-        1. Uses Matplotlib or NetworkX to draw a professional, textbook-style diagram.
-        2. Illustrates how concepts evolve from start to finish.
-        3. Saves the output as 'concept_lifecycle.png'.
+        Output STRICT Mermaid.js syntax for a `mindmap`.
+        Start with `mindmap\\n  root((Core Concept))` and branch out based on the knowledge graph.
         
-        Return ONLY the Python code in a code block.
+        REQUIRED FORMAT (JSON):
+        {{
+            "mermaid_mindmap": "mindmap\\n  root((...))"
+        }}
         """
         
-        # We use a text-only call to get the Python script
-        python_script = self.llm.generate_text(prompt)
-        # Handle if LLM returns JSON
-        if isinstance(python_script, dict):
-            python_script = python_script.get("code", "")
+        res = self.llm.generate_text(prompt)
+        mindmap_code = ""
+        if isinstance(res, dict):
+            mindmap_code = res.get("mermaid_mindmap", "")
+        elif isinstance(res, str):
+            try:
+                data = json.loads(res)
+                mindmap_code = data.get("mermaid_mindmap", "")
+            except:
+                mindmap_code = res # Fallback
             
         return {
-            "type": "e2b_diagram",
-            "python_script": python_script,
-            "description": "A holistic visualization of the entire knowledge lifecycle mapped from the video."
+            "type": "mermaid_mindmap",
+            "code": mindmap_code,
+            "description": "A holistic mindmap of the entire video."
         }

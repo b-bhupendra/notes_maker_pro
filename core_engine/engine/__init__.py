@@ -32,13 +32,13 @@ class VideoProcessor:
 
     def _check_system(self):
         cuda_available = safe_is_cuda_available()
-        max_workers = 5 if cuda_available else 2
+        # FIX: Restrict to 1 worker for local multimodal LLMs to prevent VRAM OOM
+        max_workers = 1 
         ollama_ready = False
         try:
             response = requests.get("http://localhost:11434/api/tags", timeout=5)
             ollama_ready = (response.status_code == 200)
-        except:
-            pass
+        except: pass
         return {"max_workers": max_workers, "ollama_ready": ollama_ready}
 
     def process(self, interval_sec=None, cleanup=False):
@@ -86,9 +86,12 @@ class VideoProcessor:
 
     def _synchronize(self, frames, transcript):
         sync = []
+        # Ensure transcript is iterable
+        transcript_data = transcript if transcript is not None else []
+        
         for frame in frames:
             start, end = frame['time_range']
-            text = " ".join([seg['text'] for seg in transcript if not (seg['end'] < start or seg['start'] > end)])
+            text = " ".join([seg['text'] for seg in transcript_data if not (seg['end'] < start or seg['start'] > end)])
             sync.append({
                 "time_range": frame['time_range'],
                 "timestamp": frame['timestamp'],
@@ -100,7 +103,8 @@ class VideoProcessor:
     def _run_phase_mapping(self, transcript, llm):
         self.logger.info("Phase 1: Mapping Global Context...")
         mapper = ContextMapper(llm_processor=llm)
-        full_text = " ".join([t['text'] for t in transcript])
+        transcript_data = transcript if transcript is not None else []
+        full_text = " ".join([t['text'] for t in transcript_data])
         path = os.path.join(self.output_dir, "global_context.json")
         return mapper.generate_global_context(full_text, [], output_path=path)
 

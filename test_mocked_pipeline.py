@@ -79,13 +79,17 @@ def mock_generate(model, prompt, images=None, format=None, options=None, keep_al
 
     # 4. Phase 4: Diagram Engine
     elif "Data Visualization Expert" in prompt:
-        return { "response": json.dumps({ "code": "print('Dynamic E2B Diagram Script')" }) }
+        return { 
+            "response": json.dumps({ 
+                "mermaid_mindmap": "mindmap\\n  root((Prim's Algorithm))\\n    Theory\\n      Greedy\\n      MST\\n    Components\\n      Nodes\\n      Edges" 
+            }) 
+        }
 
     # 4b. Animation Engine
     elif "expert SVG and CSS animator" in prompt:
         return {
             "response": json.dumps({
-                "svg_code": """
+                "animated_svg": """
                 <svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
                     <style>
                         .node { stroke: black; fill: none; stroke-width: 2; opacity: 0; animation: fadeIn 1s forwards; }
@@ -180,12 +184,13 @@ def main():
         print(f"Error: {video_path} not found.")
         return
 
-    # Patch ollama.Client and easyocr.Reader
+    # Patch ollama.Client, easyocr.Reader, and Transcriber
     import ollama
     from unittest.mock import patch
     
     with patch("ollama.Client") as mock_client_class, \
-         patch("easyocr.Reader") as mock_ocr_class:
+         patch("easyocr.Reader") as mock_ocr_class, \
+         patch("engine.Transcriber", create=True) as mock_transcriber_class:
         
         mock_client = MagicMock()
         mock_client.generate.side_effect = mock_generate
@@ -194,6 +199,14 @@ def main():
         mock_ocr = MagicMock()
         mock_ocr.readtext.return_value = [] # Empty OCR for speed
         mock_ocr_class.return_value = mock_ocr
+
+        mock_transcriber = MagicMock()
+        # Return a dummy transcript
+        mock_transcriber.process_video.return_value = [
+            {"start": 0.0, "end": 4.0, "text": "Now let's look at another graph algorithm. This one's called Prim's algorithm."},
+            {"start": 4.0, "end": 8.0, "text": "It is used to find the minimum spanning tree of an undirected graph."}
+        ]
+        mock_transcriber_class.return_value = mock_transcriber
         
         print(f"Starting MOCKED Dynamic Pipeline for: {video_path}")
         
