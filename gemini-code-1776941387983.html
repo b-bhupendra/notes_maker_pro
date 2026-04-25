@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mitochondria: Power of the Cell - Visual Notes</title>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Obsidian Dark Theme Colors */
+            --bg-color: #1e1e24;
+            --text-color: #e0e0e0;
+            --accent-color: #a882ff; /* Obsidian Purple */
+            --accent-green: #4CAF50;
+            --card-bg: #2b2b36;
+            --border-color: #5c5c70;
+            --font-hand: 'Caveat', cursive;
+            --font-ui: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-ui);
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .note-container {
+            max-width: 850px;
+            width: 100%;
+        }
+
+        /* Excalidraw-style Headings */
+        h1, h2, h3 {
+            font-family: var(--font-hand);
+            color: var(--accent-color);
+            letter-spacing: 1px;
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            text-align: center;
+            border-bottom: 2px dashed var(--border-color);
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            font-size: 2.5rem;
+            margin-top: 40px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h2::before {
+            content: "❖";
+            font-size: 1.5rem;
+            color: var(--border-color);
+        }
+
+        /* Excalidraw Sketchy Boxes */
+        .sketchy-box {
+            background-color: var(--card-bg);
+            border: 2px solid var(--border-color);
+            /* Uneven border radius for hand-drawn look */
+            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px; 
+            padding: 25px 30px;
+            margin-bottom: 25px;
+            box-shadow: 5px 5px 0px rgba(0,0,0,0.3);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .sketchy-box:hover {
+            transform: translateY(-2px) rotate(0.5deg);
+            border-color: var(--accent-color);
+            box-shadow: 7px 7px 0px rgba(168, 130, 255, 0.15);
+        }
+
+        /* Grid Layout for Concepts */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        /* Obsidian-style Callouts for Definitions */
+        .callout {
+            border-left: 4px solid var(--accent-color);
+            background-color: rgba(168, 130, 255, 0.08);
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 0 10px 10px 0;
+            position: relative;
+        }
+
+        .callout .def-term {
+            font-family: var(--font-hand);
+            font-size: 1.8rem;
+            color: var(--accent-color);
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* Obsidian Tags */
+        .tags {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .tag {
+            background: rgba(168, 130, 255, 0.15);
+            color: #d1b8ff;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-family: monospace;
+            border: 1px solid rgba(168, 130, 255, 0.3);
+            margin: 0 5px;
+            display: inline-block;
+        }
+
+        .highlight {
+            background: linear-gradient(104deg, rgba(76, 175, 80, 0) 0.9%, rgba(76, 175, 80, 0.25) 2.4%, rgba(76, 175, 80, 0.15) 5.8%, rgba(76, 175, 80, 0.05) 93%, rgba(76, 175, 80, 0) 96%);
+            padding: 0 4px;
+            font-weight: 600;
+            color: #a5d6a7;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="note-container">
+        <h1>Mitochondria: Powering the Cell</h1>
+        
+        <div class="tags">
+            <span class="tag">#biology</span>
+            <span class="tag">#cellular-respiration</span>
+            <span class="tag">#mitochondria</span>
+            <span class="tag">#ATP</span>
+        </div>
+
+        <h2>Key Concepts</h2>
+        <div class="grid-container">
+            <div class="sketchy-box">
+                <h3>Inputs for Energy</h3>
+                <p>The mitochondria require raw materials to function. Primarily, <span class="highlight">Glucose</span> and <span class="highlight">Oxygen</span> must enter the cell to kickstart the energy generation cycle.</p>
+            </div>
+            <div class="sketchy-box">
+                <h3>Energy Output</h3>
+                <p>The primary function of this organelle is to produce <span class="highlight">ATP (Adenosine Triphosphate)</span>. As seen in the animation, ATP is synthesized and then dispersed to fuel all cellular activities.</p>
+            </div>
+        </div>
+
+        <h2>Detailed Explanations</h2>
+        <div class="sketchy-box" style="border-radius: 15px 225px 15px 255px / 255px 15px 225px 15px;">
+            <h3>The Process of Cellular Respiration</h3>
+            <p>Based on the provided diagram and narration, the generation of cellular energy follows a distinct pathway:</p>
+            <ul>
+                <li><strong>Entry:</strong> Glucose and oxygen pass through the cell membrane.</li>
+                <li><strong>Glycolysis:</strong> Before entering the mitochondria, the initial breakdown of glucose occurs in the cytosol (the liquid matrix of the cell).</li>
+                <li><strong>The Krebs Cycle & ATP Synthesis:</strong> Inside the highly folded inner structure of the mitochondrion, complex chemical reactions occur (noted as the Krebs cycle). Using ATP Synthase and Oxygen, the organelle generates a massive burst of ATP.</li>
+                <li><strong>Distribution:</strong> The newly minted ATP molecules scatter out of the mitochondria to provide accessible energy to the rest of the cell.</li>
+            </ul>
+        </div>
+
+        <h2>Definitions</h2>
+        
+        <div class="callout">
+            <span class="def-term">Mitochondrion</span>
+            <p>A double-membrane-bound organelle found in most eukaryotic organisms. Often dubbed the "powerhouse of the cell," it is responsible for generating most of the cell's supply of ATP.</p>
+        </div>
+        
+        <div class="callout">
+            <span class="def-term">Glycolysis</span>
+            <p>The metabolic pathway that converts glucose into pyruvate. This process occurs in the cytosol of the cell and serves as the preparatory phase for the mitochondria.</p>
+        </div>
+
+        <div class="callout">
+            <span class="def-term">ATP (Adenosine Triphosphate)</span>
+            <p>An organic compound that provides energy to drive many processes in living cells. It is the molecular unit of currency for intracellular energy transfer.</p>
+        </div>
+
+        <h2>Summary</h2>
+        <div class="sketchy-box">
+            <p><strong>TL;DR:</strong> The mitochondria utilize incoming glucose and oxygen to power the cell. Through multi-step biochemical processes—beginning with glycolysis in the cytosol and ending with ATP synthesis inside the mitochondrion—the cell converts raw nutrients into <strong>ATP</strong>, the fundamental energy currency required for cellular survival and function.</p>
+        </div>
+
+    </div>
+
+</body>
+</html>

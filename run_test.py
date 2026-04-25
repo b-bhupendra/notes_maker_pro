@@ -12,7 +12,7 @@ except ImportError:
     sys.exit(1)
 
 def main():
-    video_path = "test_video.mp4"
+    video_path = "test3.mp4"
     output_dir = "test_video_output"
     
     if not os.path.exists(video_path):

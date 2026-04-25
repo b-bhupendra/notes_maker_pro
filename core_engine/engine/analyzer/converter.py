@@ -29,9 +29,11 @@ class KBConverter:
             "frame_path": moment['frame_path'],
             "ocr_text": ocr_text,
             "audio_text": moment['text'],
-            "visual_description": analysis.get("total_description", ""),
-            "key_takeaways": analysis.get("key_takeaways", []),
-            "structured_data": analysis.get("structured_data", "")
+            "key_concepts": analysis.get("key_concepts", []),
+            "detailed_explanations": analysis.get("detailed_explanations", ""),
+            "definitions": analysis.get("definitions", []),
+            "flowcharts_illustrations": analysis.get("flowcharts_illustrations", ""),
+            "summary": analysis.get("summary", "")
         }
 
     def process_metadata(self, metadata_path, output_path="knowledge_base.json", max_workers=10):

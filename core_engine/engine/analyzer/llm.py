@@ -19,6 +19,19 @@ class LLMProcessor:
             logger.error(f"Failed to encode image {image_path}: {e}")
             return None
 
+    def _clean_json(self, text):
+        import re
+        text = text.strip()
+        # Remove markdown fences if present
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+        return json.loads(text)
+
     def analyze_moment(self, image_path, ocr_text, transcript_text, retries=3):
         base64_image = self._encode_image(image_path)
         
@@ -28,14 +41,14 @@ class LLMProcessor:
         VISUAL TEXT (OCR): {ocr_text}
         AUDIO TRANSCRIPT: {transcript_text}
         
-        Your task is to extract all possible knowledge from this frame using both the image and the text:
-        1. **Data Tables**: If a table is visible in the image, convert it to Markdown format.
-        2. **Graphs/Diagrams**: Describe any charts, flowcharts, or diagrams shown in the image in detail.
-        3. **Visual Description**: A comprehensive description of the slide/scene layout and visuals.
-        4. **Key Takeaways**: Strategic points mentioned or shown.
+        Your task is to extract all possible knowledge from this frame and categorize it into the following structured format. Use rich Markdown (callouts, bolding, bullet points) inside the text values.
         
-        Format your response as a JSON object with keys:
-        "total_description", "key_takeaways", "structured_data" (include markdown tables or diagram descriptions here).
+        Format your response strictly as a JSON object with the following keys:
+        - "key_concepts": A list of short strings representing the main ideas.
+        - "detailed_explanations": A detailed Markdown formatted explanation of the topic.
+        - "definitions": A list of objects, each with a "term" and "definition".
+        - "flowcharts_illustrations": If a diagram, flowchart, or visual relationship is shown, provide the Mermaid.js code block (starting with ```mermaid) to recreate it as a sketch. If none, leave empty.
+        - "summary": A brief 1-2 sentence summary of the moment.
         """
         
         payload = {
@@ -53,11 +66,12 @@ class LLMProcessor:
                 response = requests.post(
                     f"{self.base_url}/api/generate",
                     json=payload,
-                    timeout=180 # Increased timeout for stable vision processing
+                    timeout=180
                 )
                 response.raise_for_status()
                 result = response.json()
-                return json.loads(result.get("response", "{}"))
+                raw_response = result.get("response", "{}")
+                return self._clean_json(raw_response)
             except Exception as e:
                 logger.warning(f"LLM Attempt {attempt+1}/{retries} failed: {e}")
                 if attempt < retries - 1:

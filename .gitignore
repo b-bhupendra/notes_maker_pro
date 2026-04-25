@@ -1,3 +1,4 @@
 .pytest_cache
 test_video_output
 test_video.mp4
+test2.mp4

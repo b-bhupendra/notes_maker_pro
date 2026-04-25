@@ -71,21 +71,21 @@ class VideoProcessor:
         
         # 3. Synchronize
         synchronized = []
-        if transcript:
-            for frame in frames:
-                ts = frame['timestamp']
-                text_at_ts = ""
+        for frame in frames:
+            ts = frame['timestamp']
+            text_at_ts = ""
+            if transcript:
                 for segment in transcript:
                     if segment['start'] <= ts <= segment['end']:
                         text_at_ts = segment['text']
                         break
-                
-                rel_path = os.path.relpath(frame['path'], self.output_dir)
-                synchronized.append({
-                    "timestamp": ts,
-                    "frame_path": rel_path,
-                    "text": text_at_ts
-                })
+            
+            rel_path = os.path.relpath(frame['path'], self.output_dir)
+            synchronized.append({
+                "timestamp": ts,
+                "frame_path": rel_path,
+                "text": text_at_ts
+            })
 
         # 4. Save Metadata
         result = {
@@ -108,7 +108,16 @@ class VideoProcessor:
             self.logger.error("Skipping Knowledge Base generation because Ollama is not reachable.")
             kb_result = None
         
-        # 6. Optional Cleanup
+        # 6. Generate HTML Visual Notes
+        if kb_result:
+            self.logger.info("Generating Visual Notes (HTML)...")
+            from .html_generator import HTMLGenerator
+            html_gen = HTMLGenerator(title=f"Visual Notes: {os.path.basename(self.video_path)}")
+            html_output = os.path.join(self.output_dir, "visual_notes.html")
+            html_gen.generate(kb_file, html_output)
+            self.logger.info(f"Visual Notes saved to {html_output}")
+
+        # 7. Optional Cleanup
         if cleanup:
             self.logger.info("Cleaning up temporary files...")
             frames_dir = os.path.join(self.output_dir, "frames")
@@ -122,3 +131,4 @@ class VideoProcessor:
 
         self.logger.info(f"Processing complete.")
         return kb_result
+
