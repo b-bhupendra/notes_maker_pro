@@ -4,3 +4,9 @@ moviepy
 torch
 pytest
 numpy
+scenedetect[opencv]
+Pillow
+requests
+markdown
+easyocr
+ollama

@@ -1,18 +1,18 @@
 try:
-    import whisper
+    from faster_whisper import WhisperModel
 except ImportError:
-    whisper = None
+    WhisperModel = None
 import os
 import subprocess
 from .logger import get_logger
+from .utils import safe_is_cuda_available
 
 logger = get_logger("transcriber")
 
 class Transcriber:
     def __init__(self, model_size=None, device=None):
-        import torch
-        # Auto-detect CUDA
-        cuda_available = torch.cuda.is_available()
+        # Auto-detect CUDA safely
+        cuda_available = safe_is_cuda_available()
         self.device = device or ("cuda" if cuda_available else "cpu")
         
         # If user didn't specify model, auto-select based on hardware
@@ -28,9 +28,15 @@ class Transcriber:
                 os.environ["PATH"] += os.pathsep + self.bin_path
                 logger.info(f"Added {self.bin_path} to PATH for local ffmpeg usage.")
         
-        logger.info(f"Loading Whisper model '{self.model_size}' on {self.device}...")
-        self.model = whisper.load_model(self.model_size, device=self.device)
-        logger.info("Model loaded successfully.")
+        logger.info(f"Loading Faster-Whisper model '{self.model_size}' on {self.device}...")
+        try:
+            # compute_type="int8" is very stable and fast on CPU
+            compute_type = "float16" if self.device == "cuda" else "int8"
+            self.model = WhisperModel(self.model_size, device=self.device, compute_type=compute_type)
+            logger.info("Model loaded successfully.")
+        except Exception as e:
+            logger.error(f"Failed to load Faster-Whisper model: {e}")
+            self.model = None
 
     def extract_audio(self, video_path, audio_output="temp_audio.mp3"):
         logger.info(f"Extracting audio from {video_path}...")
@@ -48,17 +54,22 @@ class Transcriber:
             return None
 
     def transcribe(self, audio_path):
+        if not self.model:
+            logger.error("No model loaded, skipping transcription.")
+            return []
+
         logger.info(f"Starting transcription for {audio_path}...")
-        result = self.model.transcribe(audio_path, verbose=False)
+        # beam_size=5 is standard
+        segments_gen, info = self.model.transcribe(audio_path, beam_size=5)
         
         segments = []
-        for segment in result['segments']:
+        for segment in segments_gen:
             segments.append({
-                "start": segment['start'],
-                "end": segment['end'],
-                "text": segment['text'].strip()
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text.strip()
             })
-            logger.info(f"[{segment['start']:.2f}s -> {segment['end']:.2f}s]: {segment['text'].strip()}")
+            logger.info(f"[{segment.start:.2f}s -> {segment.end:.2f}s]: {segment.text.strip()}")
             
         return segments
 

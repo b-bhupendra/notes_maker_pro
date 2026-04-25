@@ -1,6 +1,7 @@
 import cv2
 import os
 from .logger import get_logger
+from scenedetect import detect, ContentDetector, open_video
 
 logger = get_logger("extractor")
 
@@ -19,77 +20,81 @@ class FrameExtractor:
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.duration = self.total_frames / self.fps
-        
-    def _save_frame(self, frame_count, timestamp, last_frame=None):
+
+    def _save_frame(self, frame_count, timestamp):
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
         ret, frame = self.cap.read()
         if ret:
-            # Resize to 540p
+            # Resize to 720p
             h, w = frame.shape[:2]
-            target_h = 540
+            target_h = 720
             if h > target_h:
                 aspect_ratio = w / h
                 target_w = int(target_h * aspect_ratio)
                 frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
-
-            # Change Detection: Check if this frame is significantly different from the last one
-            if last_frame is not None:
-                diff = cv2.absdiff(frame, last_frame)
-                non_zero_count = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
-                similarity = 1.0 - (non_zero_count / (frame.shape[0] * frame.shape[1]))
-                if similarity > 0.98: # 98% similar means it's likely the same slide
-                    return None, frame
 
             filename = os.path.join(self.output_dir, f"frame_{int(timestamp * 100) / 100}.jpg")
             cv2.imwrite(filename, frame)
             return filename, frame
         return None, None
 
-    def extract_with_interval(self, interval_sec=0.5):
-        logger.info(f"Extracting frames every {interval_sec}s from {self.video_path}...")
+    def extract_scenes(self, threshold=27.0):
+        logger.info(f"Detecting scenes in {self.video_path} (Duration: {self.duration:.2f}s)...")
+        
+        # Logic Fix: If video is very short, treat as one block immediately
+        if self.duration < 15.0:
+            logger.info("Video under 15s. Treating as single semantic block.")
+            scene_list = []
+        else:
+            scene_list = detect(self.video_path, ContentDetector(threshold=threshold))
+        
         extracted_paths = []
-        last_frame_data = None
         
-        # Calculate frame step
-        step = int(interval_sec * self.fps)
-        if step < 1: step = 1
+        if not scene_list:
+            # If no scenes detected or short video, treat whole video as one scene
+            start_time = 0.0
+            end_time = self.duration
+            scene_list = [(start_time, end_time)]
         
-        for frame_idx in range(0, self.total_frames, step):
-            timestamp = frame_idx / self.fps
-            path, last_frame_data = self._save_frame(frame_idx, timestamp, last_frame_data)
+        for i, scene in enumerate(scene_list):
+            if isinstance(scene[0], float):
+                start_time = scene[0]
+                end_time = scene[1]
+            else:
+                start_time = scene[0].get_seconds()
+                end_time = scene[1].get_seconds()
+            
+            # Extract frame at the middle of the scene
+            mid_time = start_time + (end_time - start_time) / 2.0
+            mid_frame_idx = int(mid_time * self.fps)
+            
+            logger.info(f"Scene {i+1}: {start_time:.2f}s to {end_time:.2f}s")
+            path, _ = self._save_frame(mid_frame_idx, mid_time)
+            
             if path:
-                extracted_paths.append({"timestamp": timestamp, "path": path})
-                if len(extracted_paths) % 10 == 0:
-                    logger.info(f"Extracted {len(extracted_paths)} unique frames so far...")
-        
+                extracted_paths.append({
+                    "time_range": [start_time, end_time],
+                    "path": path,
+                    "timestamp": mid_time
+                })
+                
+        logger.info(f"Total unique scenes extracted: {len(extracted_paths)}")
         return extracted_paths
 
-    def extract_n_frames(self, n):
-        logger.info(f"Extracting {n} frames from {self.video_path}...")
-        interval = self.total_frames // (n + 1)
+    def extract_at_intervals(self, interval_sec=10.0):
+        logger.info(f"Extracting frames at {interval_sec}s intervals...")
         extracted_paths = []
-        last_frame_data = None
-        
-        for i in range(1, n + 1):
-            frame_idx = i * interval
-            timestamp = frame_idx / self.fps
-            path, last_frame_data = self._save_frame(frame_idx, timestamp, last_frame_data)
+        current_time = 0.0
+        while current_time < self.duration:
+            frame_idx = int(current_time * self.fps)
+            path, _ = self._save_frame(frame_idx, current_time)
             if path:
-                extracted_paths.append({"timestamp": timestamp, "path": path})
-                logger.info(f"Extracted frame {i}/{n} at {timestamp:.2f}s")
-        
-        return extracted_paths
-
-    def extract_at_timestamps(self, timestamps):
-        logger.info(f"Extracting frames at specific timestamps: {timestamps}")
-        extracted_paths = []
-        for ts in timestamps:
-            frame_idx = int(ts * self.fps)
-            if frame_idx < self.total_frames:
-                path, _ = self._save_frame(frame_idx, ts)
-                if path:
-                    extracted_paths.append({"timestamp": ts, "path": path})
-                    logger.info(f"Extracted frame at {ts:.2f}s")
+                extracted_paths.append({
+                    "time_range": [current_time, min(current_time + interval_sec, self.duration)],
+                    "path": path,
+                    "timestamp": current_time
+                })
+            current_time += interval_sec
         return extracted_paths
 
     def __del__(self):

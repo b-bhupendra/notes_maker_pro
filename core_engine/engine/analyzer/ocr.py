@@ -20,10 +20,8 @@ class OCRProcessor:
             return
         
         if OCRProcessor._reader is None:
-            use_gpu = torch.cuda.is_available() if torch else False
-            logger.info(f"Initializing EasyOCR (GPU={use_gpu})...")
-            # Using 'en' for English. Add other languages if needed.
-            OCRProcessor._reader = easyocr.Reader(['en'], gpu=use_gpu)
+            logger.info("Initializing EasyOCR (CPU mode to save VRAM)...")
+            OCRProcessor._reader = easyocr.Reader(['en'], gpu=False)
         
     def extract_text(self, image_path):
         if OCRProcessor._reader is None:
