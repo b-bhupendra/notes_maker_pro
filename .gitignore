@@ -9,5 +9,6 @@ __pycache__
 test_video_output
 core_engine/__pycache__
 core_engine/__pycache__
-core_engine/bin/
+core_engine/bin/*.exe
+core_engine/bin/*
 *.mp3
