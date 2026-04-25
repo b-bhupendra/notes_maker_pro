@@ -172,6 +172,41 @@ class HTMLGenerator:
             margin: 20px 0;
             border-radius: 0 15px 15px 0;
         }
+
+        .animated-explainer-box {
+            background: #2c3e50; /* Dark contrast to make sketchy SVG pop */
+            border-radius: 15px;
+            padding: 40px;
+            margin: 20px 0;
+            position: relative;
+            text-align: center;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+        }
+        .animated-explainer-box svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .replay-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+        .replay-btn:hover { background: rgba(255,255,255,0.2); }
+        .explainer-caption {
+            color: #bdc3c7;
+            font-size: 0.9rem;
+            margin-top: 15px;
+            font-style: italic;
+        }
         """
 
         self.js = """
@@ -204,6 +239,15 @@ class HTMLGenerator:
                 }
             });
         });
+
+        function replayAnimation(btn) {
+            const container = btn.closest('.animated-explainer-box');
+            const svg = container.querySelector('svg');
+            if (svg) {
+                const newSvg = svg.cloneNode(true);
+                svg.parentNode.replaceChild(newSvg, svg);
+            }
+        }
         """
 
     def _markdown_to_html(self, text):
@@ -270,6 +314,17 @@ class HTMLGenerator:
                     svg_code = vis.get("svg_code", "")
                     if svg_code:
                         scenes_html += f'<div class="svg-illustration">{svg_code}</div>'
+                elif vis.get("type") == "animation":
+                    svg_code = vis.get("svg_code", "")
+                    explanation = vis.get("explanation", "")
+                    if svg_code:
+                        scenes_html += f"""
+                        <div class="animated-explainer-box">
+                            <button class="replay-btn" onclick="replayAnimation(this)">↺ Replay</button>
+                            {svg_code}
+                            <div class="explainer-caption">{explanation}</div>
+                        </div>
+                        """
                         
             # Research
             res_notes = scene.get("research_notes", "")

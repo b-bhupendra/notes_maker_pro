@@ -4,6 +4,7 @@ from .ocr import OCRProcessor
 from .llm import LLMProcessor
 from .layout_analyzer import LayoutAnalyzer
 from .visual_engine import VisualEngine
+from .animation_engine import AnimationEngine
 from ..logger import get_logger
 
 logger = get_logger("analyzer")
@@ -13,6 +14,7 @@ class KBConverter:
         self.ocr = OCRProcessor()
         self.llm = LLMProcessor(model=model)
         self.visual_engine = VisualEngine(self.llm)
+        self.animation_engine = AnimationEngine(self.llm)
 
     def _process_moment(self, moment, metadata_path, i, total, layout_analyzer):
         logger.info(f"Processing scene {i+1}/{total} from {moment.get('time_range', [0,0])}")
@@ -70,6 +72,20 @@ class KBConverter:
                         })
             except Exception as ev:
                 logger.error(f"Visual enhancement failed for scene {i+1}: {ev}")
+
+        # 5. Animation Trigger Logic (Semantic Mechanism Check)
+        trigger_keywords = ["mechanism", "process", "flow", "how it works", "entering", "exiting", "cycle", "algorithm", "path", "logic"]
+        should_animate = any(kw in (moment['text'] + analysis.get('detailed_explanations', '')).lower() for kw in trigger_keywords)
+        
+        if should_animate:
+            logger.info(f"Semantic Trigger Detected for scene {i+1}: Generating explainer animation...")
+            anim = self.animation_engine.generate_animation(moment.get('global_context'), moment['text'])
+            if anim:
+                visual_elements_out.append({
+                    "type": "animation",
+                    "svg_code": anim["svg_code"],
+                    "explanation": anim["explanation"]
+                })
         
         return {
             "time_range": moment.get('time_range', [moment.get('timestamp', 0), moment.get('timestamp', 0)]),

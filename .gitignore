@@ -10,3 +10,4 @@ __pycache__
 test_video_output
 core_engine/__pycache__
 core_engine/__pycache__
+core_engine/bin
