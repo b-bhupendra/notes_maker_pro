@@ -26,6 +26,19 @@ knowledge_base.json
 *.mp3
 *.wav
 *.m4a
+*.jpg
+*.png
+*.svg
+*.jpeg
+*.gif
+
+# Output and Temporary Directories
+output/
+*_notes/
+*_test_output/
+knowledge_base.json
+visual_notes.html
 
 # Logs
 *.log
+test_log.txt

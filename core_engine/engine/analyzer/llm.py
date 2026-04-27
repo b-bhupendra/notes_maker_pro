@@ -134,9 +134,9 @@ class LLMProcessor:
         global_context_str = json.dumps(global_context, indent=2) if global_context else "No global context available."
 
         prompt_tpl = Template("""
-        You are drafting a section of high-fidelity visual notes. 
+        You are a strict technical data parser. 
         
-        GLOBAL CONTEXT (The 'Total Knowledge' of the video):
+        GLOBAL CONTEXT:
         $global_context
         
         LOCAL SCENE DATA:
@@ -144,33 +144,29 @@ class LLMProcessor:
         AUDIO TRANSCRIPT: $transcript_text
         
         INSTRUCTIONS:
-        1. Process this local scene while ensuring it aligns with the GLOBAL CORE THESIS.
-        2. Reference terms from the GLOBAL GLOSSARY where applicable.
-        3. If EXTENDED RESEARCH is available in the global context, inject relevant facts into this section.
-        4. If this scene relates to a future concept mapped in the GLOBAL TIMELINE, add a 'Foreshadowing' note.
-        5. PRESERVE ALL TECHNICAL KNOWLEDGE.
+        Extract the maximum amount of factual information from the transcript and visual text. 
+        Classify every piece of information into strict categories. Do not use conversational filler.
         
-        ANTI-HALLUCINATION RULES:
-        - Do NOT use generic phrases like 'In this section, we see a deep dive...'. 
-        - Write direct, factual bullet points based ONLY on the provided transcript and image.
-        - For Mermaid: Analyze the provided image and transcript. YOU MUST map the EXACT entities shown in the image. DO NOT output generic placeholders like 'A --> B'. If there is no flowchart in the image, return an empty string for 'mermaid_code'.
-        - If no diagram is warranted, return an empty array for 'visual_elements'.
-
         REQUIRED OUTPUT FORMAT (JSON):
         {
-            "key_concepts": ["Concept 1", "Concept 2"],
-            "detailed_explanations": "Full markdown explanation.",
-            "definitions": [{"term": "X", "definition": "Y"}],
+            "core_assertion": "One single sentence stating the primary fact of this scene.",
+            "sequential_steps": [
+                "1. First action or state.",
+                "2. Second action or state."
+            ],
+            "extracted_facts": [
+                "Fact 1 derived from audio/video.",
+                "Fact 2 derived from audio/video."
+            ],
+            "definitions": [
+                {"term": "Term exactly as spoken/written", "definition": "Strict definition"}
+            ],
             "visual_elements": [
                 {
                     "type": "diagram",
-                    "mermaid_code": "graph LR\\nA-->B",
-                    "caption": "Hand-drawn style diagram"
+                    "mermaid_code": "graph TD\\nA[Node] --> B[Node]"
                 }
-            ],
-            "summary": "Brief summary.",
-            "research_notes": "Extra context from external research.",
-            "foreshadowing": "Notes on how this connects to later parts of the video."
+            ]
         }
         
         Return ONLY the JSON object.

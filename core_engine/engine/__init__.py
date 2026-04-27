@@ -16,7 +16,7 @@ from .utils import safe_is_cuda_available
 
 class VideoProcessor:
     """
-    Orchestrates the Two-Pass Map-Reduce Architecture for video knowledge synthesis.
+    Orchestrates the entire Map-Reduce Video-to-Knowledge Pipeline.
     """
     def __init__(self, video_path, output_dir="output", model_size=None, callback=None):
         self.video_path = video_path
@@ -28,7 +28,6 @@ class VideoProcessor:
             
         self.extractor = FrameExtractor(video_path, output_dir=os.path.join(self.output_dir, "frames"))
         self.transcriber = Transcriber(model_size=model_size) if Transcriber else None
-        self.kb_converter = None # Initialized during process
 
     def _check_system(self):
         cuda_available = safe_is_cuda_available()
@@ -43,30 +42,38 @@ class VideoProcessor:
 
     def process(self, interval_sec=None, cleanup=False):
         sys_config = self._check_system()
-        self.logger.info(f"System State: Ollama={sys_config['ollama_ready']}, Workers={sys_config['max_workers']}")
-        
+        duration = self.extractor.duration
+        self.logger.info(f"--- Pipeline Initialization ---")
+        self.logger.info(f"Video Duration: {duration:.2f}s")
+        self.logger.info(f"System State: Ollama={sys_config['ollama_ready']}, Workers={sys_config['max_workers']}, CUDA={sys_config['cuda_available']}")
+
+        # Preliminary Estimation
+        est_whisper = duration * 0.2 # 0.2x realtime on average CPU
+        self.logger.info(f"Estimated Total Time: ~{int(est_whisper + 30)}s (may vary by hardware)")
+
         # 1. Ingestion Phase
-        self.logger.info("Step 1: Ingesting video (Scenes + Transcription)...")
+        self.logger.info("[PROGRESS 10%] Step 1: Ingesting video (Scenes + Transcription)...")
         if interval_sec:
             frames = self.extractor.extract_at_intervals(interval_sec=interval_sec)
         else:
             frames = self.extractor.extract_scenes(threshold=27.0)
             
+        num_scenes = len(frames)
+        self.logger.info(f"Extracted {num_scenes} scenes. Transcription starting...")
         transcript = self.transcriber.process_video(self.video_path) if self.transcriber else []
         
         # --- NEW: WATERFALL MEMORY CLEAR ---
-        self.logger.info("Freeing Audio Transcriber from memory...")
+        self.logger.info("[PROGRESS 40%] Freeing Audio Transcriber from memory...")
         import gc
         del self.transcriber
         self.transcriber = None
         gc.collect()
-        try:
-            if sys_config.get("cuda_available"):
+        if sys_config['cuda_available']:
+            try:
                 import torch
                 torch.cuda.empty_cache()
-        except ImportError:
-            pass
-        # -----------------------------------
+                self.logger.info("CUDA Cache cleared.")
+            except ImportError: pass
         
         # Synchronize data for metadata
         synchronized = self._synchronize(frames, transcript)
@@ -80,16 +87,26 @@ class VideoProcessor:
             self.kb_converter = KBConverter()
             llm = self.kb_converter.llm
             
-            # Pass 1: Global Context & Research
+            # Phase: Global Mapping
+            self.logger.info("[PROGRESS 50%] Step 2: Global Context Mapping (The Map)...")
             global_context = self._run_phase_mapping(transcript, llm)
+            
+            # Phase: Research
+            self.logger.info("[PROGRESS 60%] Step 3: Autonomous Research Expansion...")
             global_context = self._run_phase_research(global_context, llm)
+            
+            # Phase: Visuals
+            self.logger.info("[PROGRESS 70%] Step 4: Generating Holistic Diagrams...")
             global_context = self._run_phase_visuals(global_context, llm)
             
-            # Pass 2: Context-Injected Synthesis
+            # Phase: Synthesis
+            self.logger.info(f"[PROGRESS 80%] Step 5: Synthesis Phase (The Reduce) - Processing {num_scenes} scenes...")
             kb_result = self._run_phase_synthesis(metadata_file, global_context, sys_config["max_workers"])
             
-            # Phase 5: Final Materialization
+            # Phase: Materialization
+            self.logger.info("[PROGRESS 95%] Step 6: Materializing Visual Notes (HTML)...")
             self._run_phase_html(kb_result, global_context)
+            self.logger.info("[PROGRESS 100%] Pipeline Complete.")
         else:
             self.logger.error("Ollama not found. Skipping AI synthesis.")
 
@@ -100,7 +117,6 @@ class VideoProcessor:
 
     def _synchronize(self, frames, transcript):
         sync = []
-        # Ensure transcript is iterable
         transcript_data = transcript if transcript is not None else []
         
         for frame in frames:
@@ -115,7 +131,6 @@ class VideoProcessor:
         return sync
 
     def _run_phase_mapping(self, transcript, llm):
-        self.logger.info("Phase 1: Mapping Global Context...")
         mapper = ContextMapper(llm_processor=llm)
         transcript_data = transcript if transcript is not None else []
         full_text = " ".join([t['text'] for t in transcript_data])
@@ -123,7 +138,6 @@ class VideoProcessor:
         return mapper.generate_global_context(full_text, [], output_path=path)
 
     def _run_phase_research(self, context, llm):
-        self.logger.info("Phase 2: Autonomous Research Expansion...")
         engine = ResearchEngine(llm_processor=llm)
         def search(q): 
             self.logger.info(f"Researching: {q}")
@@ -131,23 +145,19 @@ class VideoProcessor:
         return engine.perform_research(context, search_tool_callback=search)
 
     def _run_phase_visuals(self, context, llm):
-        self.logger.info("Phase 4: Generating Holistic E2B Diagrams...")
         engine = DiagramEngine(llm_processor=llm)
         context["holistic_diagram"] = engine.generate_holistic_diagrams(context)
         return context
 
     def _run_phase_synthesis(self, metadata_file, context, workers):
-        self.logger.info("Phase 3: Context-Injected 'Reduce' Synthesis...")
         kb_file = os.path.join(self.output_dir, "knowledge_base.json")
         return self.kb_converter.process_metadata(metadata_file, kb_file, global_context=context, max_workers=workers)
 
     def _run_phase_html(self, kb, context):
         if not kb: return
-        self.logger.info("Phase 5: Materializing Visual Notes (HTML)...")
         from .html_generator import HTMLGenerator
         html_gen = HTMLGenerator(title=f"Visual Notes: {os.path.basename(self.video_path)}")
         ctx_path = os.path.join(self.output_dir, "global_context.json")
-        # Save context one last time
         with open(ctx_path, "w") as f: json.dump(context, f, indent=4)
         html_gen.generate(os.path.join(self.output_dir, "knowledge_base.json"), 
                          os.path.join(self.output_dir, "visual_notes.html"), 

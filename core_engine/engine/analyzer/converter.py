@@ -69,10 +69,8 @@ class KBConverter:
                 logger.error(f"Visual enhancement failed for scene {i+1}: {ev}")
 
         # 4. Animation Trigger Logic — delegated to ContextMapper.detect_mechanism()
-        # Combines audio transcript + LLM-derived explanations for the check so
-        # the detector can catch mechanistic descriptions the LLM surfaces even
-        # when the raw transcript text alone lacks trigger keywords.
-        combined_text = text_content + " " + analysis.get("detailed_explanations", "")
+        # Combines audio transcript + LLM-derived core assertion for the check
+        combined_text = text_content + " " + analysis.get("core_assertion", "")
         if self.context_mapper.detect_mechanism(combined_text):
             logger.info(f"ContextMapper: mechanism detected for scene {i+1} — generating animated explainer...")
             animated_svg = self.animation_engine.generate_explainer(
@@ -88,14 +86,12 @@ class KBConverter:
             "time_range": moment.get('time_range', [moment.get('timestamp', 0), moment.get('timestamp', 0)]),
             "frame_path": moment.get('frame_path', ''),
             "ocr_text": ocr_text,
-            "audio_text": text_content,  # Fix 3: use the safe variable, not moment['text']
-            "key_concepts": analysis.get("key_concepts", []),
-            "detailed_explanations": analysis.get("detailed_explanations", ""),
+            "audio_text": text_content,
+            "core_assertion": analysis.get("core_assertion", ""),
+            "sequential_steps": analysis.get("sequential_steps", []),
+            "extracted_facts": analysis.get("extracted_facts", []),
             "definitions": analysis.get("definitions", []),
-            "visual_elements": visual_elements_out,
-            "summary": analysis.get("summary", ""),
-            "research_notes": analysis.get("research_notes", ""),
-            "foreshadowing": analysis.get("foreshadowing", "")
+            "visual_elements": visual_elements_out
         }
 
     def process_metadata(self, metadata_path, output_path="knowledge_base.json", global_context=None, max_workers=10):
