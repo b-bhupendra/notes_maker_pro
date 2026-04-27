@@ -26,11 +26,12 @@ class VideoProcessor:
         self.video_path = video_path
         self.output_dir = output_dir
         self.logger = get_logger("processor", callback=callback)
-        self.db = DBManager(os.path.join(self.output_dir, "knowledge_lake.db"))
         
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
             
+        self.db = DBManager(os.path.join(self.output_dir, "knowledge_lake.db"))
+        
         self.extractor = FrameExtractor(video_path, output_dir=os.path.join(self.output_dir, "frames"))
         self.transcriber_model_size = model_size
 

@@ -15,13 +15,13 @@ mocked_test_output/
 test_video_output/
 scratch/
 .env
+.streamlit/
 
 # Engine Binaries (auto-downloaded at runtime — never committed)
 core_engine/bin/*
 !core_engine/bin/.gitkeep
-knowledge_base.json
 
-# Media files
+# Media files (Stay Local)
 *.mp4
 *.mp3
 *.wav
@@ -32,13 +32,20 @@ knowledge_base.json
 *.jpeg
 *.gif
 
+# Knowledge artifacts (Stay Local)
+knowledge_lake.db
+knowledge_base.json
+visual_notes.html
+project_data.json
+status.json
+
 # Output and Temporary Directories
 output/
 *_notes/
 *_test_output/
-knowledge_base.json
-visual_notes.html
+*_output/
 
 # Logs
 *.log
 test_log.txt
+test_log_v2.txt
