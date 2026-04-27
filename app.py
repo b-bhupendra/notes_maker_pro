@@ -80,9 +80,13 @@ with st.sidebar:
         st.session_state.project_dir = os.path.join(st.session_state.project_root, project_name)
         if not os.path.exists(st.session_state.project_dir):
             os.makedirs(st.session_state.project_dir)
-            # Save the video
-            with open(os.path.join(st.session_state.project_dir, "source.mp4"), "wb") as f:
+        
+        # Always ensure the source video is present in the project directory
+        video_target = os.path.join(st.session_state.project_dir, "source.mp4")
+        if not os.path.exists(video_target):
+            with open(video_target, "wb") as f:
                 f.write(video_file.getbuffer())
+        
         st.session_state.current_video = video_file.name
 
 # Main Dashboard
@@ -101,10 +105,10 @@ with col1:
             source_path = os.path.join(st.session_state.project_dir, "source.mp4")
             cmd = [sys.executable, "run_pipeline.py", "--video", source_path, "--out", st.session_state.project_dir, "--mode", "harvest", "--interval", str(interval)]
             
-            # FIX: Redirect to file to prevent Pipe Deadlock
+            # FIX: Redirect to file with unbuffered writing for real-time logs
             log_path = os.path.join(st.session_state.project_dir, "pipeline_execution.log")
-            with open(log_path, "a") as log_file:
-                subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+            log_file = open(log_path, "a", buffering=1) 
+            subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, cwd=os.getcwd())
             st.rerun()
 
         st.subheader("Module 2: The Synthesizer")
@@ -112,10 +116,10 @@ with col1:
             source_path = os.path.join(st.session_state.project_dir, "source.mp4")
             cmd = [sys.executable, "run_pipeline.py", "--video", source_path, "--out", st.session_state.project_dir, "--mode", "synthesize"]
             
-            # FIX: Redirect to file to prevent Pipe Deadlock
+            # FIX: Redirect to file with unbuffered writing for real-time logs
             log_path = os.path.join(st.session_state.project_dir, "pipeline_execution.log")
-            with open(log_path, "a") as log_file:
-                subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+            log_file = open(log_path, "a", buffering=1)
+            subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, cwd=os.getcwd())
             st.rerun()
 
         # Telemetry
