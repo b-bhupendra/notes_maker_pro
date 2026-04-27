@@ -14,17 +14,17 @@ from .analyzer.researcher import ResearchEngine
 from .analyzer.diagram_engine import DiagramEngine
 from .logger import get_logger
 from .utils import safe_is_cuda_available
+from .db_manager import DBManager
 
 class VideoProcessor:
     """
-    Orchestrates the temporal modularization of the pipeline.
-    Module 1: Harvest (Extraction + Transcription)
-    Module 2: Synthesize (LLM + Research + HTML)
+    Orchestrates the relational 'Knowledge Lake' pipeline.
     """
     def __init__(self, video_path, output_dir="output", model_size=None, callback=None):
         self.video_path = video_path
         self.output_dir = output_dir
         self.logger = get_logger("processor", callback=callback)
+        self.db = DBManager(os.path.join(self.output_dir, "knowledge_lake.db"))
         
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
@@ -43,66 +43,52 @@ class VideoProcessor:
         return {"max_workers": max_workers, "ollama_ready": ollama_ready, "cuda_available": cuda_available}
 
     def _update_status(self, percent, message):
-        """Saves status to a file for Streamlit to poll."""
         status = {"percent": percent, "message": message, "timestamp": time.time()}
         with open(os.path.join(self.output_dir, "status.json"), "w") as f:
             json.dump(status, f)
         self.logger.info(f"[PROGRESS {percent}%] {message}")
 
     def harvest(self, interval_sec=None):
-        """
-        Module 1: The Harvester (Deterministic)
-        Extracts frames and transcript, then stops.
-        """
-        self._update_status(5, "Initializing Harvester...")
+        """Module 1: The Relational Harvester"""
+        self._update_status(5, "Registering Video in Knowledge Lake...")
+        video_id = self.db.register_video(self.video_path, self.extractor.duration)
         
-        # 1. Extraction
         self._update_status(10, "Extracting Visual Scenes...")
         if interval_sec:
             frames = self.extractor.extract_at_intervals(interval_sec=interval_sec)
         else:
             frames = self.extractor.extract_scenes(threshold=27.0)
             
-        # 2. Transcription
         self._update_status(20, "Initializing Audio Transcriber...")
         transcriber = Transcriber(model_size=self.transcriber_model_size) if Transcriber else None
         
         self._update_status(25, "Transcribing Audio Stream...")
         transcript = transcriber.process_video(self.video_path) if transcriber else []
         
-        # 3. Data Lake Preservation
-        self._update_status(40, "Preserving Data to Lake (project_data.json)...")
+        self._update_status(40, "Committing Deterministic Data to SQLite...")
         synchronized = self._synchronize(frames, transcript)
-        project_data = {
-            "video_path": self.video_path,
-            "duration": self.extractor.duration,
-            "synchronized": synchronized,
-            "raw_transcript": transcript
-        }
+        self.db.save_scenes(video_id, synchronized)
+        self.db.update_video_status(video_id, 'harvested')
+        
+        # Save project_data.json for legacy/debugging
         with open(os.path.join(self.output_dir, "project_data.json"), "w") as f:
-            json.dump(project_data, f, indent=4)
+            json.dump({"video_id": video_id, "synchronized": synchronized}, f, indent=4)
             
-        # 4. Memory Cleanup
         del transcriber
         import gc
         gc.collect()
-        self._update_status(45, "Harvester Complete. Memory Purged.")
-        return project_data
+        self._update_status(45, "Harvesting Complete.")
+        return video_id
 
     def synthesize(self, cleanup=False):
-        """
-        Module 2: The Synthesizer (Generative AI)
-        Loads raw data and applies LLM synthesis.
-        """
+        """Module 2: The Relational Synthesizer"""
         sys_config = self._check_system()
-        data_path = os.path.join(self.output_dir, "project_data.json")
+        video_id = self.db.register_video(self.video_path, self.extractor.duration)
+        scenes = self.db.get_scenes(video_id)
         
-        if not os.path.exists(data_path):
-            self._update_status(0, "Error: project_data.json not found. Run Harvester first.")
+        if not scenes:
+            self._update_status(0, "Error: No harvested scenes found in DB. Run Harvester first.")
             return None
-            
-        with open(data_path, "r") as f:
-            project_data = json.load(f)
             
         if not sys_config["ollama_ready"]:
             self._update_status(0, "Error: Ollama not ready.")
@@ -112,36 +98,45 @@ class VideoProcessor:
         self.kb_converter = KBConverter(self.output_dir)
         llm = self.kb_converter.llm
         
-        # Phase: Global Mapping
+        # We need the full transcript for mapping (could query DB, but let's join from scenes)
+        full_transcript = " ".join([s['transcript'] for s in scenes])
+        
         self._update_status(55, "Generating Global Context Map...")
-        global_context = self._run_phase_mapping(project_data["raw_transcript"], llm)
-        
-        # Phase: Research
-        self._update_status(65, "Expanding Knowledge via Autonomous Research...")
+        global_context = self._run_phase_mapping_raw(full_transcript, llm)
         global_context = self._run_phase_research(global_context, llm)
-        
-        # Phase: Visuals
-        self._update_status(75, "Generating Holistic Diagrams...")
         global_context = self._run_phase_visuals(global_context, llm)
         
-        # Phase: Synthesis (The Reduce)
-        num_scenes = len(project_data["synchronized"])
-        self._update_status(80, f"Synthesizing {num_scenes} Knowledge Blocks...")
-        # NOTE: Pass 'keep_alive' info to converter if needed, or rely on internal logic
-        kb_result = self._run_phase_synthesis(data_path, global_context, sys_config["max_workers"])
+        self._update_status(80, f"Synthesizing {len(scenes)} Knowledge Blocks...")
+        # Custom synthesis loop for DB
+        kb_result = []
+        for i, s in enumerate(scenes):
+            self._update_status(80 + int((i/len(scenes))*15), f"Processing Block {i+1}/{len(scenes)}...")
+            moment = {
+                "frame_path": s['frame_path'],
+                "text": s['transcript'],
+                "global_context": global_context,
+                "time_range": [s['start_time'], s['end_time']]
+            }
+            analysis = self.kb_converter._process_moment(moment, self.output_dir, i, len(scenes))
+            self.db.save_synthesis(s['id'], analysis)
+            kb_result.append(analysis)
         
-        # Phase: Materialization
         self._update_status(95, "Materializing Final Clinical Notes (HTML)...")
-        self._run_phase_html(kb_result, global_context)
+        # Export from DB to ensure consistency
+        exported_kb = self.db.export_knowledge_base(video_id)
+        kb_file = os.path.join(self.output_dir, "knowledge_base.json")
+        with open(kb_file, "w") as f: json.dump(exported_kb, f, indent=4)
+        
+        self._run_phase_html(exported_kb, global_context)
+        self.db.update_video_status(video_id, 'completed')
         
         if cleanup:
             self._cleanup()
             
-        self._update_status(100, "Pipeline Complete. Knowledge Base Materialized.")
-        return kb_result
+        self._update_status(100, "Pipeline Complete.")
+        return exported_kb
 
     def process(self, interval_sec=None, cleanup=False):
-        """Legacy entry point: Runs Harvester and Synthesizer sequentially."""
         self.harvest(interval_sec=interval_sec)
         return self.synthesize(cleanup=cleanup)
 
@@ -159,10 +154,8 @@ class VideoProcessor:
             })
         return sync
 
-    def _run_phase_mapping(self, transcript, llm):
+    def _run_phase_mapping_raw(self, full_text, llm):
         mapper = ContextMapper(llm_processor=llm)
-        transcript_data = transcript if transcript is not None else []
-        full_text = " ".join([t['text'] for t in transcript_data])
         path = os.path.join(self.output_dir, "global_context.json")
         return mapper.generate_global_context(full_text, [], output_path=path)
 
@@ -174,10 +167,6 @@ class VideoProcessor:
         engine = DiagramEngine(llm_processor=llm)
         context["holistic_diagram"] = engine.generate_holistic_diagrams(context)
         return context
-
-    def _run_phase_synthesis(self, project_data_file, context, workers):
-        kb_file = os.path.join(self.output_dir, "knowledge_base.json")
-        return self.kb_converter.process_metadata(project_data_file, kb_file, global_context=context, max_workers=workers)
 
     def _run_phase_html(self, kb, context):
         if not kb: return
