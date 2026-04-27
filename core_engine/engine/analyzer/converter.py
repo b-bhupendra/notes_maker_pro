@@ -3,7 +3,7 @@ import os
 from .ocr import OCRProcessor
 from .llm import LLMProcessor
 from .visual_engine import VisualEngine
-from .animation_engine import AnimationEngine
+from .animation_engine import AnimationEngine, ContextMapper
 from ..logger import get_logger
 
 logger = get_logger("analyzer")
@@ -14,6 +14,7 @@ class KBConverter:
         self.llm = LLMProcessor(model=model)
         self.visual_engine = VisualEngine(self.llm)
         self.animation_engine = AnimationEngine(self.llm)
+        self.context_mapper = ContextMapper()  # Per-chunk mechanism detector
 
     def _process_moment(self, moment, metadata_path, i, total, layout_analyzer):
         logger.info(f"Processing scene {i+1}/{total} from {moment.get('time_range', [0,0])}")
@@ -67,15 +68,16 @@ class KBConverter:
             except Exception as ev:
                 logger.error(f"Visual enhancement failed for scene {i+1}: {ev}")
 
-        # 4. Animation Trigger Logic (Semantic Mechanism Check)
-        # Fix 3: Use pre-fetched text_content (safe .get()) for both trigger check and animation call
-        trigger_keywords = ["mechanism", "process", "flow", "how it works", "entering", "exiting", "cycle", "algorithm", "path", "logic"]
-        combined_text = (text_content + analysis.get('detailed_explanations', '')).lower()
-        should_animate = any(kw in combined_text for kw in trigger_keywords)
-        
-        if should_animate:
-            logger.info(f"Semantic Trigger Detected for scene {i+1}: Generating explainer animation...")
-            animated_svg = self.animation_engine.generate_animation(text_content, moment.get('global_context'))
+        # 4. Animation Trigger Logic — delegated to ContextMapper.detect_mechanism()
+        # Combines audio transcript + LLM-derived explanations for the check so
+        # the detector can catch mechanistic descriptions the LLM surfaces even
+        # when the raw transcript text alone lacks trigger keywords.
+        combined_text = text_content + " " + analysis.get("detailed_explanations", "")
+        if self.context_mapper.detect_mechanism(combined_text):
+            logger.info(f"ContextMapper: mechanism detected for scene {i+1} — generating animated explainer...")
+            animated_svg = self.animation_engine.generate_explainer(
+                text_content, moment.get("global_context")
+            )
             if animated_svg:
                 visual_elements_out.append({
                     "type": "animated_explainer",
@@ -113,7 +115,7 @@ class KBConverter:
         logger.info(f"Parallel Conversion: Analyzing {total} scenes using {max_workers} workers...")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Inject global context into each moment before dispatching
+            # Inject global context into each moment before dispatching workers
             for moment in synchronized_data:
                 moment['global_context'] = global_context
 

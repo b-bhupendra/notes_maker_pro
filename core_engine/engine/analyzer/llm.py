@@ -69,7 +69,7 @@ class LLMProcessor:
         return {}
 
     def generate_text(self, prompt, retries=3):
-        """Standard text generation without images."""
+        """Standard text generation without images. Returns a parsed JSON dict."""
         logger.info(f"Generating text for prompt (length: {len(prompt)})")
         
         for attempt in range(retries):
@@ -90,6 +90,35 @@ class LLMProcessor:
                     time.sleep(2)
         
         return {}
+
+    def generate_text_raw(self, prompt, retries=3):
+        """Raw text generation — returns the plain string response, NOT parsed JSON.
+        
+        Use this when the LLM is expected to return non-JSON output such as
+        raw SVG markup, HTML, or plain prose. Setting format='json' would corrupt
+        SVG/HTML responses by forcing escaping of angle brackets.
+        """
+        logger.info(f"Generating raw text for prompt (length: {len(prompt)})")
+
+        for attempt in range(retries):
+            try:
+                response = self.client.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    # No format='json' — we want the raw string the model produces
+                    options={'temperature': 0.3},
+                    keep_alive=0
+                )
+                raw = response.get("response", "").strip()
+                if raw:
+                    return raw
+                logger.warning(f"Raw generation returned empty on attempt {attempt+1}/{retries}")
+            except Exception as e:
+                logger.warning(f"Raw Text Generation Attempt {attempt+1}/{retries} failed: {e}")
+                if attempt < retries - 1:
+                    time.sleep(2)
+
+        return ""
 
     def analyze_scene(self, visual_elements, ocr_text, transcript_text, global_context=None, retries=3):
         image_bytes_list = []

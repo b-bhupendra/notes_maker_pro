@@ -174,38 +174,50 @@ class HTMLGenerator:
         }
 
         .animated-explainer-box {
-            background: #2c3e50; /* Dark contrast to make sketchy SVG pop */
-            border-radius: 15px;
-            padding: 40px;
+            background: #ffffff;
+            border: 4px solid #1e293b;
+            border-radius: 16px;
+            padding: 24px;
             margin: 20px 0;
             position: relative;
-            text-align: center;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+            box-shadow: inset 0 2px 20px rgba(0,0,0,0.08);
+            overflow: hidden;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
         }
         .animated-explainer-box svg {
             max-width: 100%;
             height: auto;
+            flex: 1;
+        }
+        .animation-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         .replay-btn {
             position: absolute;
-            top: 15px;
-            right: 15px;
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 5px 12px;
-            border-radius: 4px;
+            top: 12px;
+            right: 12px;
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid rgba(255,255,255,0.15);
+            padding: 5px 14px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
+            font-family: monospace;
             transition: all 0.2s;
             z-index: 10;
         }
-        .replay-btn:hover { background: rgba(255,255,255,0.2); }
+        .replay-btn:hover { background: #334155; color: white; }
         .explainer-caption {
-            color: #bdc3c7;
-            font-size: 0.9rem;
-            margin-top: 15px;
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-top: 12px;
             font-style: italic;
+            text-align: center;
         }
         """
 
@@ -241,22 +253,15 @@ class HTMLGenerator:
         });
 
         function replayAnimation(btn) {
+            // Spec: clone-and-replace forces the browser to discard the old
+            // CSS animation state and restart @keyframes from the beginning.
             const container = btn.closest('.animated-explainer-box').querySelector('.animation-container');
             if (!container) return;
             const svg = container.querySelector('svg');
-            if (!svg) return;
-
-            // Clone the SVG before removing the original
-            const clonedSvg = svg.cloneNode(true);
-
-            // Remove the live SVG from the DOM
-            container.removeChild(svg);
-
-            // Force a DOM reflow so the browser forgets the old animation state
-            void container.offsetWidth;
-
-            // Re-append the fresh clone — CSS @keyframes will restart from 0
-            container.appendChild(clonedSvg);
+            if (svg) {
+                const clone = svg.cloneNode(true);
+                svg.replaceWith(clone);
+            }
         }
         """
 
@@ -328,12 +333,12 @@ class HTMLGenerator:
                     svg_code = vis.get("svg_code", "")
                     if svg_code:
                         scenes_html += f'''
-                        <div class="animated-explainer-box" style="background:#1e1e1e; padding:20px; border-radius:10px; margin:20px 0; position:relative;">
-                            <button onclick="replayAnimation(this)"
-                                    class="replay-btn">
+                        <div class="animated-explainer-box">
+                            <button onclick="replayAnimation(this)" class="replay-btn">
                                 &#x1F504; Replay
                             </button>
                             <div class="animation-container">{svg_code}</div>
+                            <p class="explainer-caption">&#x1F3AC; Animated Explainer &mdash; auto-generated from transcript</p>
                         </div>
                         '''
                         
