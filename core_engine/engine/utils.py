@@ -5,29 +5,27 @@ import logging
 
 logger = logging.getLogger("engine.utils")
 
-def safe_is_cuda_available(timeout=5):
-    """
-    Checks if CUDA is available by running a small script in a subprocess.
-    This prevents the main process from hanging if the CUDA driver is unstable.
-    """
+def safe_is_cuda_available(timeout=20):  # INCREASED TIMEOUT
+    """Checks if CUDA is available by running a small script in a subprocess."""
     code = "import torch; print(torch.cuda.is_available())"
     try:
-        # Run python with the same executable as current process
+        # Added creationflags to prevent popup windows on Windows
+        flags = 0
+        if os.name == 'nt':
+            import subprocess
+            flags = subprocess.CREATE_NO_WINDOW
+
         result = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
             text=True,
             timeout=timeout,
-            env=os.environ.copy()
+            env=os.environ.copy(),
+            creationflags=flags
         )
         if result.returncode == 0:
             return result.stdout.strip().lower() == "true"
-        else:
-            logger.warning(f"CUDA check subprocess failed with exit code {result.returncode}")
-            return False
-    except subprocess.TimeoutExpired:
-        logger.warning(f"CUDA check subprocess timed out after {timeout}s. Assuming CUDA is unavailable/unstable.")
         return False
     except Exception as e:
-        logger.warning(f"CUDA check failed: {e}")
+        logger.warning(f"CUDA check failed or timed out: {e}")
         return False

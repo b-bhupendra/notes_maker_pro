@@ -54,6 +54,20 @@ class VideoProcessor:
             
         transcript = self.transcriber.process_video(self.video_path) if self.transcriber else []
         
+        # --- NEW: WATERFALL MEMORY CLEAR ---
+        self.logger.info("Freeing Audio Transcriber from memory...")
+        import gc
+        del self.transcriber
+        self.transcriber = None
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+        # -----------------------------------
+        
         # Synchronize data for metadata
         synchronized = self._synchronize(frames, transcript)
         metadata_file = os.path.join(self.output_dir, "metadata.json")
