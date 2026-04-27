@@ -100,14 +100,22 @@ with col1:
         if st.button("🔥 Run Harvester"):
             source_path = os.path.join(st.session_state.project_dir, "source.mp4")
             cmd = [sys.executable, "run_pipeline.py", "--video", source_path, "--out", st.session_state.project_dir, "--mode", "harvest", "--interval", str(interval)]
-            subprocess.Popen(cmd)
+            
+            # FIX: Redirect to file to prevent Pipe Deadlock
+            log_path = os.path.join(st.session_state.project_dir, "pipeline_execution.log")
+            with open(log_path, "a") as log_file:
+                subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
             st.rerun()
 
         st.subheader("Module 2: The Synthesizer")
         if st.button("🧠 Run Synthesizer"):
             source_path = os.path.join(st.session_state.project_dir, "source.mp4")
             cmd = [sys.executable, "run_pipeline.py", "--video", source_path, "--out", st.session_state.project_dir, "--mode", "synthesize"]
-            subprocess.Popen(cmd)
+            
+            # FIX: Redirect to file to prevent Pipe Deadlock
+            log_path = os.path.join(st.session_state.project_dir, "pipeline_execution.log")
+            with open(log_path, "a") as log_file:
+                subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
             st.rerun()
 
         # Telemetry

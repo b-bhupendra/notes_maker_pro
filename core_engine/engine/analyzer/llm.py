@@ -8,7 +8,10 @@ logger = logging.getLogger("analyzer.llm")
 class LLMProcessor:
     def __init__(self, model="llava:latest", base_url="http://localhost:11434"):
         self.model = model
-        self.client = ollama.Client(host=base_url)
+        # Explicitly enforce a 5-minute timeout on the client socket
+        import httpx
+        custom_client = httpx.Client(timeout=300.0) 
+        self.client = ollama.Client(host=base_url, client=custom_client)
 
     def unload_model(self):
         """Explicitly unloads the model from VRAM."""
