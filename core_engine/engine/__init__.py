@@ -139,10 +139,7 @@ class VideoProcessor:
 
     def _run_phase_research(self, context, llm):
         engine = ResearchEngine(llm_processor=llm)
-        def search(q): 
-            self.logger.info(f"Researching: {q}")
-            return f"Simulated insight for {q}"
-        return engine.perform_research(context, search_tool_callback=search)
+        return engine.perform_research(context)
 
     def _run_phase_visuals(self, context, llm):
         engine = DiagramEngine(llm_processor=llm)

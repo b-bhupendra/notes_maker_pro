@@ -1,13 +1,24 @@
-import json
-import logging
-import os
-from .llm import LLMProcessor
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    DDGS = None
 
 logger = logging.getLogger("analyzer.researcher")
 
 class ResearchEngine:
     def __init__(self, llm_processor=None):
         self.llm = llm_processor or LLMProcessor()
+
+    def _default_search(self, query):
+        if not DDGS:
+            return "Search tool not installed (duckduckgo-search)."
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=3))
+                return "\n".join([f"{r['title']}: {r['body']}" for r in results])
+        except Exception as e:
+            logger.error(f"DDG Search failed: {e}")
+            return "Search failed."
 
     def perform_research(self, global_context, search_tool_callback=None):
         """
@@ -46,13 +57,13 @@ class ResearchEngine:
             else:
                 search_query = gap
             
-            # Step 2: Trigger Research MCP (Web Search)
+            # Step 2: Trigger Research (Web Search)
             research_data = "Search results unavailable."
-            if search_tool_callback:
-                try:
-                    research_data = search_tool_callback(search_query)
-                except Exception as e:
-                    logger.error(f"Search tool failed for query '{search_query}': {e}")
+            search_func = search_tool_callback or self._default_search
+            try:
+                research_data = search_func(search_query)
+            except Exception as e:
+                logger.error(f"Search failed for query '{search_query}': {e}")
             
             # Step 3: Synthesize Research
             synthesis_prompt = f"""

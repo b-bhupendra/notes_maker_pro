@@ -10,3 +10,5 @@ requests
 markdown
 easyocr
 ollama
+streamlit
+duckduckgo-search
