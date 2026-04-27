@@ -2,7 +2,6 @@ import json
 import os
 from .ocr import OCRProcessor
 from .llm import LLMProcessor
-from .layout_analyzer import LayoutAnalyzer
 from .visual_engine import VisualEngine
 from .animation_engine import AnimationEngine
 from ..logger import get_logger
@@ -26,16 +25,14 @@ class KBConverter:
         
         # 1. OCR Extraction (Failsafe)
         ocr_text = self.ocr.extract_text(frame_path)
-        
-        # 2. Layout Analysis (Cropping for LLM context)
-        base_name = os.path.splitext(os.path.basename(frame_path))[0]
-        visual_elements = layout_analyzer.detect_and_crop(frame_path, base_name)
-        
-        # FIX: Only pass the primary full frame to the LLM to save VRAM
-        absolute_visual_elements = [{"asset_path": frame_path}] 
-        
-        # 3. LLM Analysis (Multimodal with Global Context)
-        # Fix 3: Use .get() to avoid KeyError if transcriber returned empty segments
+
+        # Fix 1: LayoutAnalyzer removed — it was doing expensive OpenCV crop work
+        # (layout_analyzer.detect_and_crop) only to be overwritten on the very next line.
+        # Pass the full frame directly to the LLM, saving CPU, disk I/O, and temp files.
+        absolute_visual_elements = [{"asset_path": frame_path}]
+
+        # 2. LLM Analysis (Multimodal with Global Context)
+        # Fix 3 (prev): Use .get() to avoid KeyError if transcriber returned empty segments
         text_content = moment.get('text', '')
         try:
             analysis = self.llm.analyze_scene(absolute_visual_elements, ocr_text, text_content, global_context=moment.get('global_context'))
@@ -70,7 +67,7 @@ class KBConverter:
             except Exception as ev:
                 logger.error(f"Visual enhancement failed for scene {i+1}: {ev}")
 
-        # 5. Animation Trigger Logic (Semantic Mechanism Check)
+        # 4. Animation Trigger Logic (Semantic Mechanism Check)
         # Fix 3: Use pre-fetched text_content (safe .get()) for both trigger check and animation call
         trigger_keywords = ["mechanism", "process", "flow", "how it works", "entering", "exiting", "cycle", "algorithm", "path", "logic"]
         combined_text = (text_content + analysis.get('detailed_explanations', '')).lower()
@@ -112,22 +109,16 @@ class KBConverter:
         synchronized_data = data.get("synchronized", [])
         total = len(synchronized_data)
         
-        # Initialize Layout Analyzer
-        assets_dir = os.path.join(os.path.dirname(metadata_path), "assets")
-        if not os.path.exists(assets_dir):
-            os.makedirs(assets_dir)
-        layout_analyzer = LayoutAnalyzer(output_dir=assets_dir)
-        
+        # Fix 1: LayoutAnalyzer fully removed — no assets dir creation, no init needed.
         logger.info(f"Parallel Conversion: Analyzing {total} scenes using {max_workers} workers...")
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Map the processing function across all scenes
-            # Inject global context into each moment
+            # Inject global context into each moment before dispatching
             for moment in synchronized_data:
                 moment['global_context'] = global_context
-                
+
             futures = [
-                executor.submit(self._process_moment, moment, metadata_path, i, total, layout_analyzer)
+                executor.submit(self._process_moment, moment, metadata_path, i, total)
                 for i, moment in enumerate(synchronized_data)
             ]
             knowledge_base = [f.result() for f in futures]

@@ -26,19 +26,25 @@ class ResearchEngine:
             logger.info(f"Researching: {gap}")
             
             # Step 1: Generate Search Query
+            # Fix 2: generate_text() forces format='json' on Ollama, so the prompt MUST
+            # request JSON back — asking for a raw string causes a silent parse failure
+            # returning {} every time, permanently skipping all research.
             query_prompt = f"""
             You are a Research Assistant. Given this knowledge gap from a video, generate a precise search query to find external documentation, papers, or real-world examples.
             
             KNOWLEDGE GAP: {gap}
             
-            Return ONLY the search query string.
+            REQUIRED FORMAT (JSON):
+            {{"query": "exact search terms here"}}
+            
+            Return ONLY the JSON object. No extra text.
             """
-            # We use a text-only call here, non-JSON format for raw string
-            # But generate_text currently expects format='json'. Let's adapt.
-            search_query = self.llm.generate_text(query_prompt)
-            # Handle if LLM returns JSON instead of string
-            if isinstance(search_query, dict):
-                search_query = search_query.get("query", gap)
+            search_query_result = self.llm.generate_text(query_prompt)
+            # Safely extract the query string; fall back to the raw gap text if parsing fails
+            if isinstance(search_query_result, dict):
+                search_query = search_query_result.get("query", gap)
+            else:
+                search_query = gap
             
             # Step 2: Trigger Research MCP (Web Search)
             research_data = "Search results unavailable."
