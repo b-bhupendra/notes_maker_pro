@@ -5,28 +5,37 @@ import hashlib
 from datetime import datetime
 
 class DBManager:
-    def __init__(self, db_path="knowledge_lake.db"):
+    def __init__(self, db_path):
         self.db_path = db_path
         self._init_db()
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Videos Table
-            cursor.execute("""
+            # Videos (Projects)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS videos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    file_hash TEXT UNIQUE,
-                    filename TEXT,
+                    hash TEXT UNIQUE,
+                    path TEXT,
                     duration REAL,
                     status TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
-            # Scenes Table (The "Harvester" data)
-            cursor.execute("""
+            # Global Context (Project Summary)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS global_context (
+                    video_id INTEGER PRIMARY KEY,
+                    title TEXT,
+                    summary TEXT,
+                    research_insight TEXT,
+                    FOREIGN KEY(video_id) REFERENCES videos(id)
+                )
+            """)
+
+            # Scenes (Deterministic frames/audio)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS scenes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     video_id INTEGER,
@@ -34,149 +43,164 @@ class DBManager:
                     end_time REAL,
                     frame_path TEXT,
                     transcript TEXT,
-                    ocr_text TEXT,
-                    FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+                    processed INTEGER DEFAULT 0,
+                    FOREIGN KEY(video_id) REFERENCES videos(id)
                 )
             """)
-            
-            # Knowledge Blocks Table (The "Synthesizer" data)
-            cursor.execute("""
+
+            # Knowledge Blocks (AI Synthesized Education)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS knowledge_blocks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scene_id INTEGER,
-                    core_assertion TEXT,
-                    technical_narrative TEXT,
-                    FOREIGN KEY(scene_id) REFERENCES scenes(id) ON DELETE CASCADE
+                    scene_id INTEGER UNIQUE,
+                    title TEXT,
+                    educational_narrative TEXT,
+                    mermaid_code TEXT,
+                    svg_code TEXT,
+                    FOREIGN KEY(scene_id) REFERENCES scenes(id)
                 )
             """)
-            
-            # Definitions Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS definitions (
+
+            # Facts (Anti-hallucination layer)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS facts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scene_id INTEGER,
+                    fact TEXT,
+                    source_quote TEXT,
+                    FOREIGN KEY(scene_id) REFERENCES scenes(id)
+                )
+            """)
+
+            # Flashcards
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS flashcards (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     scene_id INTEGER,
                     term TEXT,
                     definition TEXT,
-                    FOREIGN KEY(scene_id) REFERENCES scenes(id) ON DELETE CASCADE
+                    FOREIGN KEY(scene_id) REFERENCES scenes(id)
                 )
             """)
-            
-            # Visual Elements Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS visual_elements (
+
+            # Quizzes
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS quizzes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     scene_id INTEGER,
-                    type TEXT,
-                    content TEXT,
-                    FOREIGN KEY(scene_id) REFERENCES scenes(id) ON DELETE CASCADE
+                    question TEXT,
+                    option_a TEXT,
+                    option_b TEXT,
+                    option_c TEXT,
+                    option_d TEXT,
+                    correct_answer TEXT,
+                    explanation TEXT,
+                    FOREIGN KEY(scene_id) REFERENCES scenes(id)
                 )
             """)
-            
             conn.commit()
 
-    def get_file_hash(self, file_path):
-        sha256_hash = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
-
-    def register_video(self, file_path, duration):
-        file_hash = self.get_file_hash(file_path)
-        filename = os.path.basename(file_path)
-        
+    def register_video(self, video_path, duration):
+        # Hash based on file size and path for quick deduplication
+        file_hash = hashlib.sha256(f"{video_path}_{os.path.getsize(video_path)}".encode()).hexdigest()
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO videos (file_hash, filename, duration, status)
-                VALUES (?, ?, ?, 'initialized')
-                ON CONFLICT(file_hash) DO UPDATE SET
-                    filename = excluded.filename,
-                    duration = excluded.duration
-                RETURNING id
-            """, (file_hash, filename, duration))
-            return cursor.fetchone()[0]
-
-    def update_video_status(self, video_id, status):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("UPDATE videos SET status = ? WHERE id = ?", (status, video_id))
+            cursor = conn.execute("SELECT id FROM videos WHERE hash = ?", (file_hash,))
+            row = cursor.fetchone()
+            if row:
+                return row[0]
+            
+            cursor = conn.execute(
+                "INSERT INTO videos (hash, path, duration, status) VALUES (?, ?, ?, ?)",
+                (file_hash, video_path, duration, 'registered')
+            )
+            return cursor.lastrowid
 
     def save_scenes(self, video_id, scenes_data):
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            # Clear existing scenes for this video (Update strategy)
-            cursor.execute("DELETE FROM scenes WHERE video_id = ?", (video_id,))
-            
-            for scene in scenes_data:
-                cursor.execute("""
-                    INSERT INTO scenes (video_id, start_time, end_time, frame_path, transcript)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (video_id, scene['time_range'][0], scene['time_range'][1], scene['frame_path'], scene['text']))
+            for s in scenes_data:
+                # Check if scene at this exact timestamp already exists
+                cursor = conn.execute(
+                    "SELECT id FROM scenes WHERE video_id = ? AND start_time = ?", 
+                    (video_id, s['time_range'][0])
+                )
+                if cursor.fetchone(): continue
+
+                conn.execute(
+                    "INSERT INTO scenes (video_id, start_time, end_time, frame_path, transcript) VALUES (?, ?, ?, ?, ?)",
+                    (video_id, s['time_range'][0], s['time_range'][1], s['frame_path'], s['text'])
+                )
             conn.commit()
 
-    def get_scenes(self, video_id):
+    def save_synthesis(self, scene_id, data):
+        """Atomically saves the AI synthesis and marks the scene as processed."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM scenes WHERE video_id = ?", (video_id,))
-            return [dict(row) for row in cursor.fetchall()]
-
-    def save_synthesis(self, scene_id, analysis):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            # Clear existing for this scene
-            cursor.execute("DELETE FROM knowledge_blocks WHERE scene_id = ?", (scene_id,))
-            cursor.execute("DELETE FROM definitions WHERE scene_id = ?", (scene_id,))
-            cursor.execute("DELETE FROM visual_elements WHERE scene_id = ?", (scene_id,))
+            # Save main block
+            conn.execute(
+                "INSERT OR REPLACE INTO knowledge_blocks (scene_id, title, educational_narrative, mermaid_code, svg_code) VALUES (?, ?, ?, ?, ?)",
+                (scene_id, data.get('scene_title'), data.get('educational_narrative'), data.get('mermaid_code'), data.get('svg_code'))
+            )
             
-            # Narrative
-            cursor.execute("INSERT INTO knowledge_blocks (scene_id, core_assertion, technical_narrative) VALUES (?, ?, ?)",
-                           (scene_id, analysis.get('core_assertion'), analysis.get('technical_narrative')))
+            # Save facts
+            conn.execute("DELETE FROM facts WHERE scene_id = ?", (scene_id,))
+            for f in data.get('extracted_facts', []):
+                conn.execute("INSERT INTO facts (scene_id, fact, source_quote) VALUES (?, ?, ?)", 
+                             (scene_id, f.get('fact'), f.get('source_quote')))
             
-            # Definitions
-            for d in analysis.get('definitions', []):
-                cursor.execute("INSERT INTO definitions (scene_id, term, definition) VALUES (?, ?, ?)",
-                               (scene_id, d.get('term'), d.get('definition')))
+            # Save flashcards
+            conn.execute("DELETE FROM flashcards WHERE scene_id = ?", (scene_id,))
+            for card in data.get('flashcards', []):
+                conn.execute("INSERT INTO flashcards (scene_id, term, definition) VALUES (?, ?, ?)",
+                             (scene_id, card.get('term'), card.get('definition')))
             
-            # Visuals
-            for v in analysis.get('visual_elements', []):
-                cursor.execute("INSERT INTO visual_elements (scene_id, type, content) VALUES (?, ?, ?)",
-                               (scene_id, v.get('type'), v.get('mermaid_code') or v.get('svg_code')))
+            # Save quiz
+            conn.execute("DELETE FROM quizzes WHERE scene_id = ?", (scene_id,))
+            q = data.get('quiz', {})
+            if q:
+                conn.execute(
+                    "INSERT INTO quizzes (scene_id, question, option_a, option_b, option_c, option_d, correct_answer, explanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (scene_id, q.get('question'), q.get('options', [""]*4)[0], q.get('options', [""]*4)[1], 
+                     q.get('options', [""]*4)[2], q.get('options', [""]*4)[3], q.get('correct_answer'), q.get('explanation'))
+                )
             
+            # Mark as processed
+            conn.execute("UPDATE scenes SET processed = 1 WHERE id = ?", (scene_id,))
             conn.commit()
-            
-    def export_knowledge_base(self, video_id):
-        """Reconstructs the knowledge base JSON from the relational DB."""
-        kb = []
+
+    def get_unprocessed_scenes(self, video_id):
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            cursor = conn.execute("SELECT * FROM scenes WHERE video_id = ? AND processed = 0 ORDER BY start_time", (video_id,))
+            return [dict(r) for r in cursor.fetchall()]
+
+    def get_full_project(self, video_id):
+        """Reconstructs the entire project from the DB for rendering."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
             
-            scenes = cursor.execute("SELECT * FROM scenes WHERE video_id = ?", (video_id,)).fetchall()
+            # Global
+            cursor = conn.execute("SELECT * FROM global_context WHERE video_id = ?", (video_id,))
+            global_info = dict(cursor.fetchone()) if cursor.rowcount > 0 else {}
+            
+            # Scenes with Blocks
+            cursor = conn.execute("""
+                SELECT s.*, kb.title as ai_title, kb.educational_narrative, kb.mermaid_code, kb.svg_code
+                FROM scenes s
+                LEFT JOIN knowledge_blocks kb ON s.id = kb.scene_id
+                WHERE s.video_id = ?
+                ORDER BY s.start_time
+            """, (video_id,))
+            scenes = [dict(r) for r in cursor.fetchall()]
+            
             for s in scenes:
-                block = {
-                    "time_range": [s['start_time'], s['end_time']],
-                    "frame_path": s['frame_path'],
-                    "audio_text": s['transcript']
-                }
+                # Facts
+                c = conn.execute("SELECT fact, source_quote FROM facts WHERE scene_id = ?", (s['id'],))
+                s['facts'] = [dict(r) for r in c.fetchall()]
+                # Flashcards
+                c = conn.execute("SELECT term, definition FROM flashcards WHERE scene_id = ?", (s['id'],))
+                s['flashcards'] = [dict(r) for r in c.fetchall()]
+                # Quiz
+                c = conn.execute("SELECT * FROM quizzes WHERE scene_id = ?", (s['id'],))
+                q = c.fetchone()
+                s['quiz'] = dict(q) if q else None
                 
-                kb_data = cursor.execute("SELECT * FROM knowledge_blocks WHERE scene_id = ?", (s['id'],)).fetchone()
-                if kb_data:
-                    block.update({
-                        "core_assertion": kb_data['core_assertion'],
-                        "technical_narrative": kb_data['technical_narrative']
-                    })
-                
-                defs = cursor.execute("SELECT * FROM definitions WHERE scene_id = ?", (s['id'],)).fetchall()
-                block["definitions"] = [dict(d) for d in defs]
-                
-                vis = cursor.execute("SELECT * FROM visual_elements WHERE scene_id = ?", (s['id'],)).fetchall()
-                block["visual_elements"] = []
-                for v in vis:
-                    item = {"type": v['type']}
-                    if v['type'] == "diagram": item["mermaid_code"] = v['content']
-                    else: item["svg_code"] = v['content']
-                    block["visual_elements"].append(item)
-                
-                kb.append(block)
-        return kb
+            return {"global": global_info, "scenes": scenes}

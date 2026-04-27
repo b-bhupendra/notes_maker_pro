@@ -60,7 +60,6 @@ class LLMProcessor:
         return {}
 
     def generate_text(self, prompt, retries=3):
-        logger.info(f"Generating text for prompt (length: {len(prompt)})")
         for attempt in range(retries):
             try:
                 response = self.client.generate(
@@ -78,7 +77,6 @@ class LLMProcessor:
         return {}
 
     def generate_text_raw(self, prompt, retries=3):
-        logger.info(f"Generating raw text for prompt (length: {len(prompt)})")
         for attempt in range(retries):
             try:
                 response = self.client.generate(
@@ -94,52 +92,56 @@ class LLMProcessor:
                 if attempt < retries - 1: time.sleep(2)
         return ""
 
-    def analyze_scene(self, visual_elements, ocr_text, transcript_text, global_context=None, retries=3):
+    def analyze_scene(self, ocr_text, transcript_text, global_context=None, visual_assets=None, retries=2):
+        """
+        Synthesizes raw video data into an Expert Educational Knowledge Block.
+        """
         image_bytes_list = []
-        for el in visual_elements:
-            img_b64 = self._encode_image(el['asset_path'])
-            if img_b64: image_bytes_list.append(img_b64)
+        if visual_assets:
+            for el in visual_assets:
+                img_b64 = self._encode_image(el['asset_path'])
+                if img_b64: image_bytes_list.append(img_b64)
         
-        from string import Template
         global_context_str = json.dumps(global_context, indent=2) if global_context else "No global context available."
 
-        prompt_tpl = Template("""
-        You are a highly structured technical knowledge synthesizer.
+        prompt = f"""
+        SYSTEM: You are an Expert Technical Educator. Your goal is to transform video raw data into high-fidelity, hygienic study material.
         
         GLOBAL CONTEXT:
-        $global_context
+        {global_context_str}
         
         LOCAL SCENE DATA:
-        VISUAL TEXT (OCR): $ocr_text
-        AUDIO TRANSCRIPT: $transcript_text
+        VISUAL TEXT (OCR): {ocr_text}
+        AUDIO TRANSCRIPT: {transcript_text}
         
-        TASK:
-        Synthesize a cohesive, textbook-quality technical explanation of this scene. 
-        Focus on flow and information density. Do not use conversational filler.
+        STRICT RULES:
+        1. The AUDIO TRANSCRIPT is the absolute source of truth. Ignore OCR noise if it contradicts the audio.
+        2. DO NOT hallucinate. Every fact must be verifiable by a source quote.
+        3. Persona: Professional, dense, clinical, and pedagogical.
         
-        REQUIRED OUTPUT FORMAT (JSON):
-        {
-            "core_assertion": "One single sentence stating the primary fact/thesis of this scene.",
-            "technical_narrative": "A cohesive markdown-formatted explanation (2-3 paragraphs) that synthesizes visual and audio data into a smooth narrative. Use bold for key terms.",
-            "definitions": [
-                {"term": "Keyword", "definition": "Clinical technical definition"}
+        REQUIRED JSON OUTPUT SCHEMA:
+        {{
+            "scene_title": "A crisp, technical heading (4-7 words)",
+            "educational_narrative": "A 2-3 paragraph explanation in beautiful Markdown. Connect audio concepts with visual evidence. Flow like a high-end textbook.",
+            "extracted_facts": [
+                {{"fact": "Technical statement", "source_quote": "Exact substring from audio transcript proving this"}},
+                ...
             ],
-            "visual_elements": [
-                {
-                    "type": "diagram",
-                    "mermaid_code": "graph TD\\n...orthogonal flowchart code here..."
-                }
-            ]
-        }
-        
-        Return ONLY the JSON object.
-        """)
-        
-        prompt = prompt_tpl.safe_substitute(
-            global_context=global_context_str,
-            ocr_text=str(ocr_text),
-            transcript_text=str(transcript_text)
-        )
+            "mermaid_code": "A technical Mermaid.js diagram representing the process.",
+            "flashcards": [
+                {{"term": "Key term", "definition": "Clinical definition"}},
+                ...
+            ],
+            "quiz": {{
+                "question": "A challenging technical question",
+                "options": ["Option A", "Option B", "Option C", "Option D"],
+                "correct_answer": "A",
+                "explanation": "Technical justification for the answer"
+            }}
+        }}
+
+        Output ONLY valid JSON.
+        """
         
         for attempt in range(retries):
             try:
@@ -148,14 +150,14 @@ class LLMProcessor:
                     prompt=prompt,
                     images=image_bytes_list if image_bytes_list else None,
                     format='json',
-                    options={'temperature': 0.1},
+                    options={'temperature': 0.0},
                     keep_alive='5m'
                 )
                 
                 raw_response = response.get("response", "{}")
                 parsed = self._clean_json(raw_response)
                 
-                if not parsed.get("technical_narrative") and not parsed.get("core_assertion"):
+                if not parsed.get("educational_narrative") and not parsed.get("scene_title"):
                     logger.warning("LLM returned empty content. Retrying...")
                     continue
                     
@@ -171,8 +173,9 @@ class LLMProcessor:
                 if attempt < retries - 1: time.sleep(5)
         
         return {
-            "core_assertion": "Analysis failed.",
-            "technical_narrative": "Detailed synthesis unavailable due to engine error.",
-            "definitions": [],
-            "visual_elements": []
+            "scene_title": "Analysis failed.",
+            "educational_narrative": "Detailed synthesis unavailable due to engine error.",
+            "extracted_facts": [],
+            "flashcards": [],
+            "quiz": None
         }
