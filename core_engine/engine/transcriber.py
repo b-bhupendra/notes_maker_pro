@@ -11,10 +11,10 @@ from .setup_bins import ensure_ffmpeg
 logger = get_logger("transcriber")
 
 class Transcriber:
-    def __init__(self, model_size=None, device=None):
-        # Auto-detect CUDA safely
+    def __init__(self, model_size=None, device="cpu"):
+        # Force CPU for stability on 8GB RAM systems
+        self.device = "cpu"
         cuda_available = safe_is_cuda_available()
-        self.device = device or ("cuda" if cuda_available else "cpu")
         
         # If user didn't specify model, auto-select based on hardware
         if model_size is None:
@@ -31,14 +31,24 @@ class Transcriber:
             )
         self.ffmpeg_ready = ffmpeg_ready
         
-        logger.info(f"Loading Faster-Whisper model '{self.model_size}' on {self.device}...")
+        print(f"DEBUG: Loading Whisper model '{self.model_size}' on {self.device}...")
         try:
-            # compute_type="int8" is very stable and fast on CPU
-            compute_type = "float16" if self.device == "cuda" else "int8"
-            self.model = WhisperModel(self.model_size, device=self.device, compute_type=compute_type)
-            logger.info("Model loaded successfully.")
+            # Try Faster-Whisper first
+            if WhisperModel is not None:
+                print("DEBUG: Attempting Faster-Whisper initialization...")
+                compute_type = "float16" if self.device == "cuda" else "int8"
+                self.model = WhisperModel(self.model_size, device=self.device, compute_type=compute_type)
+                print("DEBUG: Faster-Whisper loaded successfully.")
+                return
+            
+            # Fallback to standard OpenAI Whisper
+            logger.info("Faster-Whisper missing or failed. Falling back to openai-whisper...")
+            import whisper
+            self.model = whisper.load_model(self.model_size, device=self.device)
+            logger.info("OpenAI Whisper loaded successfully (Fallback).")
+            
         except Exception as e:
-            logger.error(f"Failed to load Faster-Whisper model: {e}")
+            logger.error(f"Failed to load any Whisper model: {e}")
             self.model = None
 
     def extract_audio(self, video_path, audio_output="temp_audio.mp3"):
@@ -65,17 +75,36 @@ class Transcriber:
             return []
 
         logger.info(f"Starting transcription for {audio_path}...")
-        # beam_size=5 is standard
-        segments_gen, info = self.model.transcribe(audio_path, beam_size=5)
         
         segments = []
-        for segment in segments_gen:
-            segments.append({
-                "start": segment.start,
-                "end": segment.end,
-                "text": segment.text.strip()
-            })
-            logger.info(f"[{segment.start:.2f}s -> {segment.end:.2f}s]: {segment.text.strip()}")
+        try:
+            # Check if it's Faster-Whisper (returns generator) or OpenAI (returns dict)
+            if hasattr(self.model, "transcribe") and callable(getattr(self.model, "transcribe")):
+                # Faster-Whisper style
+                try:
+                    # Faster-whisper returns (generator, info)
+                    segments_gen, _ = self.model.transcribe(audio_path, beam_size=5)
+                    for segment in segments_gen:
+                        segments.append({
+                            "start": segment.start,
+                            "end": segment.end,
+                            "text": segment.text.strip()
+                        })
+                except Exception:
+                    # Maybe it's OpenAI whisper style (dict)
+                    result = self.model.transcribe(audio_path)
+                    for segment in result.get("segments", []):
+                        segments.append({
+                            "start": segment.get("start", 0),
+                            "end": segment.get("end", 0),
+                            "text": segment.get("text", "").strip()
+                        })
+            
+            for s in segments[:3]: # Log first few for verification
+                logger.info(f"[{s['start']:.2f}s -> {s['end']:.2f}s]: {s['text']}")
+                
+        except Exception as e:
+            logger.error(f"Transcription failed: {e}")
             
         return segments
 

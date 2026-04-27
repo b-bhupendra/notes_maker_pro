@@ -7,16 +7,8 @@ logger = logging.getLogger("engine.utils")
 
 def safe_is_cuda_available():
     """Checks if CUDA is available without risky long-running subprocesses."""
-    # Method 1: Environment variable check (Fastest)
-    if os.environ.get('CUDA_VISIBLE_DEVICES') == '-1':
-        return False
-        
-    # Method 2: Simple torch import with timeout
-    try:
-        import torch
-        return torch.cuda.is_available()
-    except Exception as e:
-        logger.warning(f"Direct CUDA check failed: {e}")
+    # TEMPORARY: Bypass torch import to avoid silent crash on Python 3.13
+    return False
         
     # Method 3: Lightweight subprocess fallback
     try:

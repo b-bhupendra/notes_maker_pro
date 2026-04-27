@@ -1,5 +1,5 @@
 opencv-python
-openai-whisper
+faster-whisper
 moviepy
 torch
 pytest
@@ -12,3 +12,4 @@ easyocr
 ollama
 streamlit
 duckduckgo-search
+httpx
