@@ -16,7 +16,7 @@ class KBConverter:
         self.animation_engine = AnimationEngine(self.llm)
         self.context_mapper = ContextMapper()  # Per-chunk mechanism detector
 
-    def _process_moment(self, moment, metadata_path, i, total, layout_analyzer):
+    def _process_moment(self, moment, metadata_path, i, total):
         logger.info(f"Processing scene {i+1}/{total} from {moment.get('time_range', [0,0])}")
         
         frame_path = moment['frame_path']

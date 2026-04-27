@@ -1,0 +1,14 @@
+{
+    "video_path": "test3.mp4",
+    "synchronized": [
+        {
+            "time_range": [
+                0.0,
+                8.0
+            ],
+            "timestamp": 4.0,
+            "frame_path": "frames\\frame_4.0.jpg",
+            "text": "In this process, the pump spins the impeller to create a flow. This mechanism pushes the fluid through the discharge valve."
+        }
+    ]
+}
