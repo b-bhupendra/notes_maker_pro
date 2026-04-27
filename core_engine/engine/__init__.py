@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import time
-from .setup_bins import setup_ffmpeg
+from .setup_bins import ensure_ffmpeg
 from .extractor import SceneExtractor
 from .transcriber import Transcriber
 from .db_manager import DBManager
@@ -20,10 +20,12 @@ class VideoProcessor:
         # Use DB path in output dir
         actual_db_path = os.path.join(self.output_dir, db_path)
         self.db = DBManager(actual_db_path)
-        
         self.transcriber_model_size = transcriber_model
         self.status_file = os.path.join(self.output_dir, "status.json")
         self._update_status(0, "Ready")
+        
+        # Ensure binaries are available
+        ensure_ffmpeg()
 
     def _update_status(self, progress, message):
         status = {"progress": progress, "message": message, "last_update": time.time()}
