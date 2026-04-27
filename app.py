@@ -4,183 +4,110 @@ import sys
 import json
 import time
 import subprocess
-import threading
-import logging
 from datetime import datetime
-
-# Ensure core_engine is in path
-sys.path.append(os.path.abspath("core_engine"))
-from engine import VideoProcessor
 
 # Page Config
 st.set_page_config(
-    page_title="Animator Assistant | Hygienic Video Intelligence",
+    page_title="Animator Assistant | Data Lake Dashboard",
     page_icon="🎬",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS for Premium/Clinical Look
+# Custom Styling
 st.markdown("""
     <style>
-    .stApp {
-        background-color: #ffffff;
-    }
-    .main {
-        padding: 2rem;
-    }
-    .stButton>button {
-        width: 100%;
-        border-radius: 8px;
-        height: 3rem;
-        background-color: #0366d6;
-        color: white;
-        border: none;
-        font-weight: 600;
-    }
-    .stButton>button:hover {
-        background-color: #0255b3;
-    }
-    .status-card {
-        padding: 1.5rem;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-        background-color: #f8f9fa;
-        margin-bottom: 1rem;
-    }
-    .log-container {
-        background-color: #1a1a1a;
-        color: #00ff00;
-        font-family: 'Courier New', Courier, monospace;
-        padding: 1rem;
-        border-radius: 4px;
-        height: 300px;
-        overflow-y: scroll;
-        font-size: 0.85rem;
-    }
+    .stApp { background-color: #ffffff; }
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: 600; }
+    .status-panel { padding: 1rem; border: 1px solid #eee; border-radius: 8px; background: #fafafa; margin-bottom: 1rem;}
+    .report-frame { border: 1px solid #ddd; border-radius: 8px; width: 100%; height: 800px; }
     </style>
     """, unsafe_allow_html=True)
 
-# Session State for Logs
-if 'logs' not in st.session_state:
-    st.session_state.logs = []
-if 'processing' not in st.session_state:
-    st.session_state.processing = False
-if 'output_ready' not in st.session_state:
-    st.session_state.output_ready = False
+# Initialization
+if 'project_dir' not in st.session_state:
+    st.session_state.project_dir = "output/default"
 
-class StreamlitLogHandler(logging.Handler):
-    def emit(self, record):
-        msg = self.format(record)
-        st.session_state.logs.append(msg)
-        # Handle Progress indicators
-        if "[PROGRESS" in msg:
-            try:
-                percent = int(msg.split("[PROGRESS ")[1].split("%]")[0])
-                st.session_state.progress = percent
-            except: pass
+def get_status():
+    status_path = os.path.join(st.session_state.project_dir, "status.json")
+    if os.path.exists(status_path):
+        try:
+            with open(status_path, "r") as f:
+                return json.load(f)
+        except: return None
+    return None
 
-# Sidebar
+# Sidebar: Environment & Settings
 with st.sidebar:
-    st.image("https://www.svgrepo.com/show/303108/google-photos-logo.svg", width=50) # Just a placeholder icon
-    st.title("Animator Assistant")
+    st.title("🎬 Animator Assistant")
     st.markdown("---")
     
-    st.subheader("System Status")
-    try:
-        import requests
-        resp = requests.get("http://localhost:11434/api/tags", timeout=2)
-        if resp.status_code == 200:
-            st.success("Ollama: ONLINE")
-        else:
-            st.error("Ollama: UNSTABLE")
-    except:
-        st.error("Ollama: OFFLINE")
-        
-    try:
-        import torch
-        if torch.cuda.is_available():
-            st.success(f"CUDA: {torch.cuda.get_device_name(0)}")
-        else:
-            st.warning("CUDA: NOT FOUND")
-    except:
-        st.warning("CUDA: UNKNOWN")
-        
+    st.subheader("Project Settings")
+    video_file = st.file_uploader("Upload Video Source", type=["mp4"])
+    interval = st.slider("Sampling Interval (sec)", 30, 600, 180)
+    
+    if video_file:
+        project_name = video_file.name.replace(".mp4", "")
+        st.session_state.project_dir = f"output/{project_name}"
+        if not os.path.exists(st.session_state.project_dir):
+            os.makedirs(st.session_state.project_dir)
+            # Save the video to the project dir
+            with open(os.path.join(st.session_state.project_dir, "source.mp4"), "wb") as f:
+                f.write(video_file.getbuffer())
+
     st.markdown("---")
-    st.subheader("Settings")
-    interval = st.slider("Sampling Interval (sec)", 30, 300, 180)
-    enable_research = st.checkbox("Autonomous Research (Internet)", value=True)
-    cleanup = st.checkbox("Cleanup Temp Files", value=True)
+    st.info(f"Working Directory: `{st.session_state.project_dir}`")
 
-# Main UI
-st.header("🎬 Hygienic Video Intelligence Dashboard")
-st.markdown("Transform clinical video data into structured, animated knowledge bases.")
-
-col1, col2 = st.columns([1, 1])
+# Main Dashboard
+col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("Input Stream")
-    uploaded_file = st.file_uploader("Upload MP4 Video", type=["mp4"])
+    st.header("Temporal Controls")
+    st.write("Modularize your pipeline to iterate faster.")
     
-    if uploaded_file:
-        # Save uploaded file temporarily
-        temp_path = os.path.join("temp_uploads", uploaded_file.name)
-        if not os.path.exists("temp_uploads"): os.makedirs("temp_uploads")
-        with open(temp_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        st.video(temp_path)
-        
-        if st.button("Start Neural Processing"):
-            st.session_state.processing = True
-            st.session_state.logs = []
-            st.session_state.progress = 0
-            
-            # Start Processing in a thread
-            output_folder = f"notes_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            def run_pipeline():
-                # Setup custom logger
-                logger = logging.getLogger("processor")
-                handler = StreamlitLogHandler()
-                logger.addHandler(handler)
-                
-                try:
-                    processor = VideoProcessor(temp_path, output_folder)
-                    processor.process(interval_sec=interval, cleanup=cleanup)
-                    st.session_state.output_path = os.path.join(output_folder, "visual_notes.html")
-                    st.session_state.output_ready = True
-                except Exception as e:
-                    st.session_state.logs.append(f"[ERROR] {str(e)}")
-                finally:
-                    st.session_state.processing = False
+    # Check if Harvest Data exists
+    lake_path = os.path.join(st.session_state.project_dir, "project_data.json")
+    lake_exists = os.path.exists(lake_path)
+    
+    # 1. Harvest Phase
+    st.subheader("Module 1: The Harvester")
+    st.caption("Extracts frames, audio, and transcript. (Deterministic)")
+    if st.button("🔥 Run Harvester", disabled=not video_file):
+        cmd = [sys.executable, "run_pipeline.py", "--video", os.path.join(st.session_state.project_dir, "source.mp4"), "--out", st.session_state.project_dir, "--mode", "harvest", "--interval", str(interval)]
+        subprocess.Popen(cmd)
+        st.rerun()
 
-            thread = threading.Thread(target=run_pipeline)
-            thread.start()
+    # 2. Synthesize Phase
+    st.subheader("Module 2: The Synthesizer")
+    st.caption("Applies AI Synthesis & Research. (Generative)")
+    if st.button("🧠 Run Synthesizer", disabled=not lake_exists):
+        cmd = [sys.executable, "run_pipeline.py", "--video", "none", "--out", st.session_state.project_dir, "--mode", "synthesize"]
+        subprocess.Popen(cmd)
+        st.rerun()
+
+    st.markdown("---")
+    
+    # Progress Polling
+    status = get_status()
+    if status:
+        st.subheader("Live Telemetry")
+        st.progress(status.get("percent", 0) / 100.0)
+        st.code(f"{status.get('message', 'Idle')}")
+        if status.get("percent", 0) < 100:
+            time.sleep(1)
+            st.rerun()
 
 with col2:
-    st.subheader("Processing Insight")
+    st.header("Visual Evidence Notes")
     
-    if st.session_state.processing:
-        progress_val = st.session_state.get('progress', 0)
-        st.progress(progress_val / 100.0)
-        st.info(f"Pipeline active... Current phase: {st.session_state.logs[-1] if st.session_state.logs else 'Initializing'}")
-        
-    # Log Terminal
-    st.markdown("<div class='log-container'>", unsafe_allow_html=True)
-    for log in st.session_state.logs[-15:]:
-        st.text(log)
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    if st.session_state.output_ready:
-        st.success("✅ Knowledge Base Materialized!")
-        if st.button("Open Visual Notes"):
-            # Use streamlit-to-html or just show the path
-            st.info(f"File generated at: {st.session_state.output_path}")
-            # Try to show in iframe if possible
-            with open(st.session_state.output_path, "r", encoding="utf-8") as f:
-                html_content = f.read()
-                st.components.v1.html(html_content, height=800, scrolling=True)
-
-if not st.session_state.processing and st.session_state.output_ready:
-    st.balloons()
+    notes_path = os.path.join(st.session_state.project_dir, "visual_notes.html")
+    if os.path.exists(notes_path):
+        st.success("Materialized Knowledge Base Ready.")
+        with open(notes_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+            # Inject base path for images
+            # Streamlit serves static files weirdly, but if we run from root, relative paths should work in iframe if we use the right approach.
+            st.components.v1.html(html_content, height=1000, scrolling=True)
+    else:
+        st.info("Awaiting synthesis... Run Module 1 & 2 to generate notes.")
+        if lake_exists:
+            st.warning("Harvest data found! Run 'Synthesizer' to generate the clinical notes.")

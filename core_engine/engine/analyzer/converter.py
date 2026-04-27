@@ -88,8 +88,7 @@ class KBConverter:
             "ocr_text": ocr_text,
             "audio_text": text_content,
             "core_assertion": analysis.get("core_assertion", ""),
-            "sequential_steps": analysis.get("sequential_steps", []),
-            "extracted_facts": analysis.get("extracted_facts", []),
+            "technical_narrative": analysis.get("technical_narrative", ""),
             "definitions": analysis.get("definitions", []),
             "visual_elements": visual_elements_out
         }

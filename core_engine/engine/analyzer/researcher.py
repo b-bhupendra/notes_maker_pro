@@ -1,3 +1,8 @@
+import json
+import logging
+import os
+from .llm import LLMProcessor
+
 try:
     from duckduckgo_search import DDGS
 except ImportError:
@@ -37,9 +42,6 @@ class ResearchEngine:
             logger.info(f"Researching: {gap}")
             
             # Step 1: Generate Search Query
-            # Fix 2: generate_text() forces format='json' on Ollama, so the prompt MUST
-            # request JSON back — asking for a raw string causes a silent parse failure
-            # returning {} every time, permanently skipping all research.
             query_prompt = f"""
             You are a Research Assistant. Given this knowledge gap from a video, generate a precise search query to find external documentation, papers, or real-world examples.
             
@@ -51,7 +53,6 @@ class ResearchEngine:
             Return ONLY the JSON object. No extra text.
             """
             search_query_result = self.llm.generate_text(query_prompt)
-            # Safely extract the query string; fall back to the raw gap text if parsing fails
             if isinstance(search_query_result, dict):
                 search_query = search_query_result.get("query", gap)
             else:

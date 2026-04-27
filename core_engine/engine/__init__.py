@@ -2,6 +2,7 @@ import os
 import json
 import shutil
 import requests
+import time
 from .extractor import FrameExtractor
 try:
     from .transcriber import Transcriber
@@ -16,7 +17,9 @@ from .utils import safe_is_cuda_available
 
 class VideoProcessor:
     """
-    Orchestrates the entire Map-Reduce Video-to-Knowledge Pipeline.
+    Orchestrates the temporal modularization of the pipeline.
+    Module 1: Harvest (Extraction + Transcription)
+    Module 2: Synthesize (LLM + Research + HTML)
     """
     def __init__(self, video_path, output_dir="output", model_size=None, callback=None):
         self.video_path = video_path
@@ -27,11 +30,10 @@ class VideoProcessor:
             os.makedirs(self.output_dir)
             
         self.extractor = FrameExtractor(video_path, output_dir=os.path.join(self.output_dir, "frames"))
-        self.transcriber = Transcriber(model_size=model_size) if Transcriber else None
+        self.transcriber_model_size = model_size
 
     def _check_system(self):
         cuda_available = safe_is_cuda_available()
-        # FIX: Restrict to 1 worker for local multimodal LLMs to prevent VRAM OOM
         max_workers = 1 
         ollama_ready = False
         try:
@@ -40,85 +42,112 @@ class VideoProcessor:
         except: pass
         return {"max_workers": max_workers, "ollama_ready": ollama_ready, "cuda_available": cuda_available}
 
-    def process(self, interval_sec=None, cleanup=False):
-        sys_config = self._check_system()
-        duration = self.extractor.duration
-        self.logger.info(f"--- Pipeline Initialization ---")
-        self.logger.info(f"Video Duration: {duration:.2f}s")
-        self.logger.info(f"System State: Ollama={sys_config['ollama_ready']}, Workers={sys_config['max_workers']}, CUDA={sys_config['cuda_available']}")
+    def _update_status(self, percent, message):
+        """Saves status to a file for Streamlit to poll."""
+        status = {"percent": percent, "message": message, "timestamp": time.time()}
+        with open(os.path.join(self.output_dir, "status.json"), "w") as f:
+            json.dump(status, f)
+        self.logger.info(f"[PROGRESS {percent}%] {message}")
 
-        # Preliminary Estimation
-        est_whisper = duration * 0.2 # 0.2x realtime on average CPU
-        self.logger.info(f"Estimated Total Time: ~{int(est_whisper + 30)}s (may vary by hardware)")
-
-        # 1. Ingestion Phase
-        self.logger.info("[PROGRESS 10%] Step 1: Ingesting video (Scenes + Transcription)...")
+    def harvest(self, interval_sec=None):
+        """
+        Module 1: The Harvester (Deterministic)
+        Extracts frames and transcript, then stops.
+        """
+        self._update_status(5, "Initializing Harvester...")
+        
+        # 1. Extraction
+        self._update_status(10, "Extracting Visual Scenes...")
         if interval_sec:
             frames = self.extractor.extract_at_intervals(interval_sec=interval_sec)
         else:
             frames = self.extractor.extract_scenes(threshold=27.0)
             
-        num_scenes = len(frames)
-        self.logger.info(f"Extracted {num_scenes} scenes. Transcription starting...")
-        transcript = self.transcriber.process_video(self.video_path) if self.transcriber else []
+        # 2. Transcription
+        self._update_status(20, "Initializing Audio Transcriber...")
+        transcriber = Transcriber(model_size=self.transcriber_model_size) if Transcriber else None
         
-        # --- NEW: WATERFALL MEMORY CLEAR ---
-        self.logger.info("[PROGRESS 40%] Freeing Audio Transcriber from memory...")
-        import gc
-        del self.transcriber
-        self.transcriber = None
-        gc.collect()
-        if sys_config['cuda_available']:
-            try:
-                import torch
-                torch.cuda.empty_cache()
-                self.logger.info("CUDA Cache cleared.")
-            except ImportError: pass
+        self._update_status(25, "Transcribing Audio Stream...")
+        transcript = transcriber.process_video(self.video_path) if transcriber else []
         
-        # Synchronize data for metadata
+        # 3. Data Lake Preservation
+        self._update_status(40, "Preserving Data to Lake (project_data.json)...")
         synchronized = self._synchronize(frames, transcript)
-        metadata_file = os.path.join(self.output_dir, "metadata.json")
-        with open(metadata_file, "w") as f:
-            json.dump({"video_path": self.video_path, "synchronized": synchronized}, f, indent=4)
+        project_data = {
+            "video_path": self.video_path,
+            "duration": self.extractor.duration,
+            "synchronized": synchronized,
+            "raw_transcript": transcript
+        }
+        with open(os.path.join(self.output_dir, "project_data.json"), "w") as f:
+            json.dump(project_data, f, indent=4)
+            
+        # 4. Memory Cleanup
+        del transcriber
+        import gc
+        gc.collect()
+        self._update_status(45, "Harvester Complete. Memory Purged.")
+        return project_data
 
-        # 2. Map-Reduce Pipeline
-        kb_result = None
-        if sys_config["ollama_ready"]:
-            self.kb_converter = KBConverter()
-            llm = self.kb_converter.llm
+    def synthesize(self, cleanup=False):
+        """
+        Module 2: The Synthesizer (Generative AI)
+        Loads raw data and applies LLM synthesis.
+        """
+        sys_config = self._check_system()
+        data_path = os.path.join(self.output_dir, "project_data.json")
+        
+        if not os.path.exists(data_path):
+            self._update_status(0, "Error: project_data.json not found. Run Harvester first.")
+            return None
             
-            # Phase: Global Mapping
-            self.logger.info("[PROGRESS 50%] Step 2: Global Context Mapping (The Map)...")
-            global_context = self._run_phase_mapping(transcript, llm)
+        with open(data_path, "r") as f:
+            project_data = json.load(f)
             
-            # Phase: Research
-            self.logger.info("[PROGRESS 60%] Step 3: Autonomous Research Expansion...")
-            global_context = self._run_phase_research(global_context, llm)
-            
-            # Phase: Visuals
-            self.logger.info("[PROGRESS 70%] Step 4: Generating Holistic Diagrams...")
-            global_context = self._run_phase_visuals(global_context, llm)
-            
-            # Phase: Synthesis
-            self.logger.info(f"[PROGRESS 80%] Step 5: Synthesis Phase (The Reduce) - Processing {num_scenes} scenes...")
-            kb_result = self._run_phase_synthesis(metadata_file, global_context, sys_config["max_workers"])
-            
-            # Phase: Materialization
-            self.logger.info("[PROGRESS 95%] Step 6: Materializing Visual Notes (HTML)...")
-            self._run_phase_html(kb_result, global_context)
-            self.logger.info("[PROGRESS 100%] Pipeline Complete.")
-        else:
-            self.logger.error("Ollama not found. Skipping AI synthesis.")
+        if not sys_config["ollama_ready"]:
+            self._update_status(0, "Error: Ollama not ready.")
+            return None
 
+        self._update_status(50, "Synthesizer Initialized. Loading LLM...")
+        self.kb_converter = KBConverter(self.output_dir)
+        llm = self.kb_converter.llm
+        
+        # Phase: Global Mapping
+        self._update_status(55, "Generating Global Context Map...")
+        global_context = self._run_phase_mapping(project_data["raw_transcript"], llm)
+        
+        # Phase: Research
+        self._update_status(65, "Expanding Knowledge via Autonomous Research...")
+        global_context = self._run_phase_research(global_context, llm)
+        
+        # Phase: Visuals
+        self._update_status(75, "Generating Holistic Diagrams...")
+        global_context = self._run_phase_visuals(global_context, llm)
+        
+        # Phase: Synthesis (The Reduce)
+        num_scenes = len(project_data["synchronized"])
+        self._update_status(80, f"Synthesizing {num_scenes} Knowledge Blocks...")
+        # NOTE: Pass 'keep_alive' info to converter if needed, or rely on internal logic
+        kb_result = self._run_phase_synthesis(data_path, global_context, sys_config["max_workers"])
+        
+        # Phase: Materialization
+        self._update_status(95, "Materializing Final Clinical Notes (HTML)...")
+        self._run_phase_html(kb_result, global_context)
+        
         if cleanup:
             self._cleanup()
             
+        self._update_status(100, "Pipeline Complete. Knowledge Base Materialized.")
         return kb_result
+
+    def process(self, interval_sec=None, cleanup=False):
+        """Legacy entry point: Runs Harvester and Synthesizer sequentially."""
+        self.harvest(interval_sec=interval_sec)
+        return self.synthesize(cleanup=cleanup)
 
     def _synchronize(self, frames, transcript):
         sync = []
         transcript_data = transcript if transcript is not None else []
-        
         for frame in frames:
             start, end = frame['time_range']
             text = " ".join([seg['text'] for seg in transcript_data if not (seg['end'] < start or seg['start'] > end)])
@@ -146,9 +175,9 @@ class VideoProcessor:
         context["holistic_diagram"] = engine.generate_holistic_diagrams(context)
         return context
 
-    def _run_phase_synthesis(self, metadata_file, context, workers):
+    def _run_phase_synthesis(self, project_data_file, context, workers):
         kb_file = os.path.join(self.output_dir, "knowledge_base.json")
-        return self.kb_converter.process_metadata(metadata_file, kb_file, global_context=context, max_workers=workers)
+        return self.kb_converter.process_metadata(project_data_file, kb_file, global_context=context, max_workers=workers)
 
     def _run_phase_html(self, kb, context):
         if not kb: return
